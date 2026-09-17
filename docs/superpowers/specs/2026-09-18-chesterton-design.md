@@ -366,3 +366,18 @@ score.
 
 Judging runs six weeks after submission. The demo URL, checkpoints, credits,
 and PAT must all be re-verified in late November.
+
+## 17. Open decisions
+
+**Hosting (decide by week 5).** Not yet chosen. The binding constraint is that
+the demo URL, its backing checkpoints, and its credits must all remain live and
+funded from submission on 2026-10-30 through the close of judging on
+2026-12-15. A free tier that lapses in November is a self-inflicted zero.
+Requirements: persistent process for SSE, a small disk for SQLite, an outbound
+path to Nebius, and a stable public URL.
+
+**Curated PR selection (decide by week 2).** The specific ~6-10 pull requests
+are not yet chosen. Selection criteria: each must have a matching Nebius
+prebuilt image, a deterministic suite, and at least one hunk where a safety
+invariant is plausibly undefended. At least one seed should be drawn from the
+UTBoost-identified set so the demo and the benchmark claim reinforce each other.
