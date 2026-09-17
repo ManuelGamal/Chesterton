@@ -84,7 +84,7 @@ The README states this split.
 ### In scope
 
 - Three analysis tiers over a PR diff (§5): uncovered lines, distinguishing
-  inputs, surviving mutants.
+  inputs (solver-backed, with a property-based fallback), surviving mutants.
 - Minimal undefended subset via ddmin over hunks (§8).
 - Survivor triage and an execution-verified regression test (§9).
 - A curated set of ~6-10 seeded pull requests, each backed by a Nebius prebuilt
@@ -204,6 +204,27 @@ out or cannot apply.
 
 **Never print "equivalent."** Absence of a reported difference is not a proof
 of equivalence. The UI says "no difference found within budget."
+
+### Tier 1b — property-based distinguishing input (fallback within tier 1)
+
+When CrossHair cannot apply — unannotated arguments, impure functions, or a
+solver timeout — fall back to **Hypothesis `ghostwriter.equivalent()`**
+(MPL-2.0, very mature). It emits source for a property test asserting two
+functions return equal values; the Hypothesis docs name differential testing,
+where neither function is trusted and any difference indicates a bug, as an
+explicit use case. Ghostwrite a differential test between base and patch, then
+run it in a fork.
+
+This is random search rather than SMT, so it proves less per run but applies to
+far more functions. It exists specifically to keep tier 1 populated when the
+CrossHair hit rate is low (§15) — without it, tier 1 depends entirely on the
+curated seeds happening to contain pure, annotated code.
+
+Findings from this tier carry the same evidence weight as tier 1 in the UI but
+are labelled by method, since a randomly-found counterexample and a
+solver-proved one are not the same claim. **Known gap:** ghostwriter does not
+handle functions that mutate their arguments (Hypothesis issue 4113); those
+fall through to tier 2.
 
 ### Tier 2 — surviving mutant (fallback)
 
@@ -450,6 +471,10 @@ In priority order:
    function over a predicate; no sandbox needed.
 5. **CrossHair output parsing** — recorded `diffbehavior` output as fixtures,
    including the no-difference-found and timeout cases.
+6. **Tier-1 fallback routing** — given a function signature, assert the correct
+   tier is selected (CrossHair for annotated/pure, ghostwriter for the rest,
+   tier 2 for argument-mutating functions). Pure function over metadata; no
+   sandbox needed.
 6. **Triage handling** — recorded Nemotron responses as fixtures; test parsing,
    ranking, and abstention deterministically. We test our handling, not the
    model.
@@ -461,7 +486,8 @@ In priority order:
 | Failure | Response |
 |---|---|
 | Sandbox op fails or times out | mark `error`, exclude from statistics, show honestly; never counted as killed |
-| CrossHair finds nothing / times out | expected for 70–90% of functions; fall through to tier 2 silently. Never render "equivalent" |
+| CrossHair finds nothing / times out | expected for 70–90% of functions; fall through to tier 1b, then tier 2, silently. Never render "equivalent" |
+| Ghostwriter test errors or is inapplicable | fall through to tier 2; argument-mutating functions skip 1b entirely |
 | Fan-out slower than expected | semaphore plus queue; warm run already on screen |
 | Nebius unavailable during judging | warm runs serve everything; live button disabled with an honest message |
 | Credits exhausted | hard per-run budget cap in dollars and ops; refuse to start rather than overspend |
@@ -497,9 +523,13 @@ set.
   evidence of semantic equivalence.
 
 **CrossHair hit rate.** If under ~10% of changed functions in the curated seeds
-produce a distinguishing input, tier 1 is demo-invisible. Mitigation: select
-seed PRs partly *for* pure, annotated functions, and measure hit rate on
-candidate seeds in week 2 before committing them.
+produce a distinguishing input, tier 1 is demo-invisible. Two mitigations, both
+in scope: the tier 1b ghostwriter fallback (§5) covers functions CrossHair
+cannot solve, and seed PRs are selected partly *for* pure, annotated functions.
+Measure combined tier-1 hit rate on candidate seeds in week 2, before
+committing them. **Acceptance bar: at least one curated seed must produce a
+solver-proved distinguishing input**, since that is the demo's strongest
+single moment and random search cannot substitute for it on camera.
 
 **Survivor noise.** Triage deserves more of the six weeks than the
 visualization does, even though the visualization is what judges remember.
@@ -523,9 +553,15 @@ The repository ships under MIT. Traps to avoid:
 - **elkjs is EPL-2.0** — safe as an unmodified dependency, copyleft if patched.
   Not used; the topology panel's layout is hand-computed.
 
-Direct dependencies and their licences: `crosshair-tool` (MIT), `libcst` (MIT),
-`contree-sdk` (Apache-2.0), `coverage`/`pytest`/`pytest-cov` (MIT/Apache-2.0),
-`@xyflow/react` (MIT), `motion` (MIT), `shiki` (MIT), shadcn/ui (MIT).
+Direct dependencies and their licences: `crosshair-tool` (MIT), `hypothesis`
+(MPL-2.0), `libcst` (MIT), `contree-sdk` (Apache-2.0),
+`coverage`/`pytest`/`pytest-cov` (MIT/Apache-2.0), `@xyflow/react` (MIT),
+`motion` (MIT), `shiki` (MIT), shadcn/ui (MIT).
+
+**MPL-2.0 note:** Hypothesis is file-level copyleft. Using it as an unmodified
+dependency imposes no obligation on this MIT codebase. If any Hypothesis source
+file were modified, that file — and only that file — would have to stay
+MPL-2.0. We do not modify it.
 
 Safe to learn from: cosmic-ray (MIT) for its two-phase init/exec split,
 mutmut's `node_mutation.py` (BSD-3) for the operator catalogue, LLMorpheus
@@ -547,7 +583,7 @@ score.
 |---|---|
 | 1 | Fan-out spike (go/no-go). Credit codes, op-cap request, image-pull verification. |
 | 2 | Coverage contexts, diff-to-line mapping, GitHub ingest, seed pipeline. Measure CrossHair hit rate on candidate seeds. |
-| 3 | LibCST operators, Nano mutant generation, validation gate, CrossHair tier. |
+| 3 | LibCST operators, Nano mutant generation, validation gate, CrossHair tier, ghostwriter fallback. |
 | 4 | Triage, regression-test verification, ddmin. **Most time here.** |
 | 5 | Diff-hero UI, swimlanes, SSE streaming, hosted deploy. |
 | 6 | UTBoost benchmark run, video (two full days), README. |
@@ -586,8 +622,6 @@ are not silently re-litigated:
   remaining reframe — "your patch silently broke an invariant nothing tested" —
   at 3–4 days. Daikon itself is a trap: Java-only, no maintained Python front
   end.
-- **Hypothesis `ghostwriter.equivalent()`** as a tier-1 fallback for functions
-  CrossHair cannot solve. ~1 day, MPL-2.0. First candidate if time appears.
 - **Agent-provenance detection** (`Co-Authored-By` trailers, bot accounts,
   branch prefixes). ~2 hours and a good product moment, but a regex over commit
   trailers is not a research contribution and must not be presented as one.
