@@ -149,7 +149,14 @@ regression-test verification.
 - `run` — seed_id, mode (`live` | `warm`), status, started_at, finished_at
 - `hunk` — run_id, file, start_line, end_line, semantic_unit, in_minimal_subset
 - `finding` — run_id, hunk_id, tier (`uncovered` | `distinguishing` |
-  `mutation`), strength, file, line_range, payload
+  `mutation`), strength, file, line_range, payload, mutant_id (nullable)
+
+  `finding` is the single surface the UI and triage read from. Each tier writes
+  into it: tier 0 directly from the coverage map, tier 1 from parsed CrossHair
+  output, tier 2 from each `survived` row in `mutant_result` (linked by
+  `mutant_id`). `mutant`/`mutant_result` remain the execution record;
+  `finding` is the reviewer-facing projection. `strength` orders the ladder
+  and is derived from `tier`, not stored independently.
 - `mutant` — run_id, hunk_id, file, start_line, end_line, operator,
   original_src, mutated_src, source (`llm` | `deterministic`), rationale,
   content_hash
