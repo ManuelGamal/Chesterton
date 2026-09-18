@@ -1,8 +1,8 @@
-diff --git a/widgets/users.py b/widgets/users.py
+﻿diff --git a/widgets/users.py b/widgets/users.py
 index 1111111..2222222 100644
 --- a/widgets/users.py
 +++ b/widgets/users.py
-@@ -10,7 +10,6 @@ def get_user(user_id):
+@@ -10,7 +10,5 @@ def get_user(user_id):
      cached = _cache.get(user_id)
      if cached is not None:
          return cached
@@ -10,7 +10,7 @@ index 1111111..2222222 100644
 -        raise ValueError("user_id required")
      row = _db.fetch(user_id)
      return row
-@@ -30,3 +29,4 @@ def list_users(limit):
+@@ -30,2 +29,3 @@ def list_users(limit):
      rows = _db.fetch_all()
 +    rows = rows[:limit]
      return rows
