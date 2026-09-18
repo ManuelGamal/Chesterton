@@ -52,3 +52,14 @@ def test_entries_missing_mutated_src_are_skipped():
                             original_src="x = 1\n")
     assert len(mutants) == 1
     assert mutants[0].mutated_src == "x = 9\n"
+
+
+def test_a_null_mutants_key_yields_no_mutants_rather_than_raising():
+    # A model with nothing to propose may legitimately send this.
+    assert parse_mutants('{"mutants": null}', file="a.py", start_line=1,
+                         end_line=1, original_src="x = 1\n") == []
+
+
+def test_a_non_list_mutants_key_yields_no_mutants_rather_than_raising():
+    assert parse_mutants('{"mutants": 5}', file="a.py", start_line=1,
+                         end_line=1, original_src="x = 1\n") == []

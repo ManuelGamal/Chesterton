@@ -65,8 +65,15 @@ def parse_mutants(
     if parsed is None:
         return []
 
+    entries = parsed.get("mutants")
+    if not isinstance(entries, list):
+        # A model with nothing to propose may send `"mutants": null`. Iterating
+        # that raises, which would abort a run over hundreds of hunks for a
+        # reply that simply said "nothing here".
+        return []
+
     mutants: list[Mutant] = []
-    for entry in parsed.get("mutants", []):
+    for entry in entries:
         if not isinstance(entry, dict):
             continue
         mutated = entry.get("mutated_src")
