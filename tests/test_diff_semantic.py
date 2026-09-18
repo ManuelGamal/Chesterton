@@ -1,3 +1,5 @@
+import pytest
+
 from chesterton.diffing.semantic import semantic_hunks
 
 SOURCE = '''\
@@ -78,3 +80,23 @@ def test_the_hunk_path_is_normalised_to_forward_slashes():
     # match a coverage map and covered lines are reported as undefended.
     hunks = semantic_hunks(SOURCE, "widgets\\users.py", [4])
     assert hunks[0].file == "widgets/users.py"
+
+
+def test_a_line_number_below_one_is_rejected():
+    with pytest.raises(ValueError, match="outside"):
+        semantic_hunks(SOURCE, "users.py", [0])
+
+
+def test_a_line_past_the_end_of_the_source_is_rejected():
+    # The visible symptom of a coordinate mismatch: source from one tree, line
+    # numbers from another. Returning a confident hunk over unrelated content
+    # is the failure mode this project exists to eliminate, so it must raise.
+    with pytest.raises(ValueError, match="different trees"):
+        semantic_hunks(SOURCE, "users.py", [500])
+
+
+def test_valid_coordinates_at_the_file_boundary_are_accepted():
+    # Off-by-one in the guard would be worse than no guard: it would reject
+    # the last line of every file.
+    last = len(SOURCE.splitlines())
+    assert semantic_hunks(SOURCE, "users.py", [last])[0].end_line == last

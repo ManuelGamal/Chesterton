@@ -13,6 +13,12 @@ sandbox forks. Two rules, and the tension between them is the whole design:
 Function and class bodies are never candidates; they would swallow everything.
 Decorators are not statements at all, so a changed decorator line falls through
 to a single-line hunk, which is exactly what stripping @rate_limit needs.
+
+COORDINATE CONTRACT. `source` must be the post-patch file content at head, and
+`lines` must be post-patch coordinates as emitted by `changed_lines`. Passing
+source from one tree with line numbers from another does not fail loudly — it
+expands to spans over unrelated content and reports them with full confidence.
+The bounds check below turns the detectable half of that mistake into an error.
 """
 
 from __future__ import annotations
@@ -87,7 +93,28 @@ def _resolve(line: int, candidates: list[tuple[int, int, ast.AST]]) -> tuple[int
     return start, end
 
 
+def _check_coordinates(source: str, lines: Sequence[int]) -> None:
+    """Reject line numbers that cannot belong to this source.
+
+    A line outside the file is the visible symptom of a coordinate-system
+    mismatch — most often `source` taken from the base tree while `lines` are
+    post-patch. Unguarded, that degrades silently into confident hunks over
+    unrelated content, which is the exact failure mode this project exists to
+    eliminate. Only the detectable half is caught here: a mismatch that happens
+    to land in range still passes, so the contract in the module docstring
+    remains the real defence.
+    """
+    total = len(source.splitlines())
+    outside = [n for n in lines if n < 1 or n > total]
+    if outside:
+        raise ValueError(
+            f"line numbers {outside} fall outside a {total}-line source; "
+            "source and lines are probably from different trees"
+        )
+
+
 def semantic_hunks(source: str, path: str, lines: Sequence[int]) -> list[Hunk]:
+    _check_coordinates(source, lines)
     path = normalise_path(path)
     candidates = _candidates(source)
     spans = {_resolve(line, candidates) for line in lines}
