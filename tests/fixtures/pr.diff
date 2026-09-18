@@ -1,4 +1,4 @@
-﻿diff --git a/widgets/users.py b/widgets/users.py
+diff --git a/widgets/users.py b/widgets/users.py
 index 1111111..2222222 100644
 --- a/widgets/users.py
 +++ b/widgets/users.py
