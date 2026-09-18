@@ -372,26 +372,35 @@ quality, not on the reasoning here.
 **Nemotron 3 Nano Omni is NOT served** — it does not appear in the live model
 list. Nothing in this design needs it.
 
-### Reasoning is on by default, and it is inline (verified 2026-09-18)
+### Reasoning control works, and truncation is the real hazard (verified 2026-09-18)
 
-A five-token completion against Ultra returned `reasoning_tokens: 5`,
-`reasoning_content: null`, and chain-of-thought text in `content` —
-`"The user wants a single"` in reply to "Reply with the single word: ok".
+**`chat_template_kwargs` IS honoured.** Two Super calls with an identical
+prompt asking only for `{"ok": true}`:
 
-Two consequences, both binding:
+| Call | `chat_template_kwargs` | `reasoning_tokens` | `content` |
+|---|---|---|---|
+| A | `{"enable_thinking": false}` | **0** | `{"ok": true}` |
+| B | *(omitted)* | **64** | `\n\n{"ok": true}` |
 
-1. **Budget `max_tokens` for thinking plus answer.** A limit sized for the
-   answer alone returns truncated reasoning and no answer at all.
-2. **Reasoning is not separated into `reasoning_content`; it prepends into
-   `content`.** Any step that parses a structured reply — the `json_schema`
-   triage verdicts in §9 above all — must either disable thinking for that
-   call or extract the payload from a response that begins with prose.
-   Do not assume `json.loads(content)` will work.
+Three things follow.
 
-This makes reasoning-budget control load-bearing rather than an optimisation,
-and it is still unverified whether Nebius honours `chat_template_kwargs`
-(`enable_thinking`, `reasoning_budget`). Settle that before building the triage
-step; if the controls are ignored, triage needs a tolerant parser instead.
+1. **Thinking is ON by default and costs real tokens** — 64 of them for a
+   trivial reply. Across thousands of execution-tier calls that is a straight
+   multiplier on both latency and spend. Disable it for mechanical extraction;
+   keep it for the judgment calls in §9.
+2. **On a complete response, reasoning does not appear in `content`.** B
+   returned clean JSON with leading whitespace, not prose. `json.loads` on a
+   stripped `content` is safe *when the call finishes*.
+3. **The hazard is truncation, not contamination.** A call cut off by
+   `max_tokens` mid-reasoning returns the partial thought as `content` — an
+   Ultra call with `max_tokens: 5` returned `"The user wants a single"`.
+   That parses as neither JSON nor an answer, and nothing in the response
+   flags it except `finish_reason`.
+
+**Engineering rule:** treat `finish_reason == "length"` as an error and never
+parse that response. Size `max_tokens` for thinking plus answer whenever
+thinking is on, and set `enable_thinking: false` on every call whose output is
+consumed by a parser rather than a human.
 
 **Prompt caching exists** (`prompt_cache_hit_tokens` / `prompt_cache_miss_tokens`
 are reported per call). The fan-out sends near-identical prompts thousands of
@@ -565,15 +574,15 @@ set.
   largest risk. Verify two or three specific pulls.
 - Sandboxes have network egress to `api.tokenfactory.nebius.com` (undocumented;
   an open community issue asks exactly this).
-- Nebius passes `chat_template_kwargs` through to Nemotron, so reasoning-budget
-  control works.
+- ~~Nebius passes `chat_template_kwargs` through to Nemotron.~~
+  **RESOLVED 2026-09-18:** it does. `enable_thinking: false` yields 0 reasoning
+  tokens against 64 for the same prompt without it. See §10.
 - ~~Nemotron Super responds on the account's key.~~ **RESOLVED 2026-09-18:**
-  all four Nemotron models are served, with exact IDs, prices and per-request
-  limits recorded in §10. Ultra is available, so the routing is a real
-  three-tier funnel. Ultra declares `tools` and `reasoning` support. Still
-  unverified: whether any model actually *responds* to a completion — listing
-  is not the same as serving — and whether Nebius honours `chat_template_kwargs`
-  for reasoning-budget control.
+  all four Nemotron models are served and Super and Ultra both answer real
+  completions. Exact IDs, prices and per-request limits are in §10.
+
+**Every model-side unknown in this document is now closed.** What remains
+unverified is entirely sandbox-side: the three items below.
 - **Content-hash checkpoint deduplication is NOT documented.** Earlier
   reporting claimed identical filesystem state yields the identical UUID.
   Verify empirically before relying on it, and never claim it on camera
