@@ -1,4 +1,5 @@
 import ast
+from dataclasses import replace
 
 from chesterton.models import Hunk
 from chesterton.mutation.generate import MUTANT_BUDGET, generate
@@ -57,10 +58,11 @@ def test_the_budget_is_respected():
 
 
 def test_guard_deletion_outranks_a_boundary_shift():
-    # The spec's headline operator is the quiet removal of a guard. Under a
-    # tight budget that must survive and the cheaper mutations must not.
+    # Asserting the exact operator, not a set: find_candidates' insertion order
+    # puts strip_decorator first, so a set-based assertion would pass even with
+    # the ranking removed entirely.
     mutants, _ = generate([Hunk("pay.py", 1, 5)], {"pay.py": GUARDED}, budget=1)
-    assert mutants[0].operator in {"delete_guard", "strip_decorator"}
+    assert mutants[0].operator == "delete_guard"
 
 
 def test_the_default_budget_fits_the_measured_concurrency_cap():
@@ -78,3 +80,24 @@ def test_supplied_llm_mutants_are_gated_alongside_deterministic_ones():
 
     assert [m.rationale for m in mutants] == ["from the model"]
     assert rejected["unparseable"] == 1
+
+
+def test_a_model_supplied_path_is_normalised():
+    windows = replace(an_llm_mutant("x = 1\n", "from the model"),
+                      file="widgets\\pay.py")
+
+    mutants, _ = generate([], {}, llm_mutants=[windows])
+
+    assert mutants[0].file == "widgets/pay.py"
+
+
+def test_the_same_edit_with_different_separators_deduplicates():
+    # Two spellings of one file are one mutant, not two — otherwise we pay for
+    # the same sandbox operation twice to learn the same thing.
+    forward = replace(an_llm_mutant("x = 1\n", "a"), file="widgets/pay.py")
+    backward = replace(an_llm_mutant("x = 1\n", "b"), file="widgets\\pay.py")
+
+    mutants, rejected = generate([], {}, llm_mutants=[forward, backward])
+
+    assert len(mutants) == 1
+    assert rejected["duplicate"] == 1

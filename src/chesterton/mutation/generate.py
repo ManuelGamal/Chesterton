@@ -18,12 +18,14 @@ they pass the same gate as everything else.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 
 from chesterton.filters import is_mutable_source
 from chesterton.models import Hunk
 from chesterton.mutation.gate import MutantGate
 from chesterton.mutation.model import Mutant
 from chesterton.mutation.operators import apply_candidate, find_candidates
+from chesterton.paths import normalise_path
 
 #: Matches the measured safe concurrency. One round, no queueing.
 MUTANT_BUDGET = 24
@@ -83,6 +85,10 @@ def generate(
                 collected.append(mutant)
 
     for mutant in llm_mutants:
+        # Model replies carry whatever path the prompt showed them. Left
+        # unnormalised, the same file with different separators hashes to two
+        # distinct mutants and misses every lookup keyed on forward slashes.
+        mutant = replace(mutant, file=normalise_path(mutant.file))
         if not is_mutable_source(mutant.file):
             skip("not_mutable_source")
             continue
