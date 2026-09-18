@@ -13,24 +13,38 @@ for the design it implements.
 
 ## Blocked on you
 
-1. **Run the fan-out spike.** `scripts/spike_fanout.py` is written and parses but
-   has never run — it needs `NEBIUS_API_KEY` in the session environment. It
-   measures whether forking one checkpoint 24 ways *and running a test suite in
-   each* completes fast enough to feel live. **This is the go/no-go gate for the
-   whole architecture.** Record all four numbers it prints into spec §15,
-   replacing "This is unmeasured."
+**One item remains.**
 
-2. **Verify the prebuilt SWE-rebench images actually pull.** The plan's scoping
+1. **Verify the prebuilt SWE-rebench images actually pull.** The plan's scoping
    decision — curated seeds only, no arbitrary repos — rests entirely on Nebius
    publishing ~7,500 prebuilt images loadable via `images.oci("docker://…")`.
    That claim comes from a HuggingFace discussion thread, not formal docs. Pull
-   two or three specific images before designing Phase 3 around them.
+   two or three specific images before designing Phase 3 around them. This
+   determines **scope**, not architecture — the architecture is now verified.
 
-3. **Call `contree_get_guide` before writing more sandbox code.** The
-   `contree-sdk` surface used in `sandbox/contree.py` (`images.oci`,
-   `images.use`, `image.run(shell=, files=, disposable=, tag=)`, `result.uuid`)
-   is entirely unverified against the live service. All five adapter tests pass
-   regardless, because they test shape only.
+### Closed since this document was written
+
+- ~~**Run the fan-out spike.**~~ **Done, and it is a GO.** 24 forks in 4.1s
+  worst case, 0.2s round-to-round spread, 72/72 successful, ~85% parallel
+  efficiency. Numbers and derived facts are in spec §15.
+- ~~**Call `contree_get_guide` before writing more sandbox code.**~~ Superseded
+  by something better: the SDK was introspected directly and
+  `sandbox/contree.py` was found **wrong in three ways** — a non-existent
+  `contree_client` import, a constructor that takes `base_url`/`token` rather
+  than a client object, and `.uuid` being a `UUID` rather than a `str`. All
+  fixed, and the real surface is now pinned by offline tests rather than
+  shape checks.
+- **Also verified live:** forks inherit parent filesystem state, tagging works,
+  disposable runs yield no reusable checkpoint, and — previously undocumented —
+  **sandboxes CAN reach the inference API** over DNS and TCP:443.
+- **All four Nemotron models are served**, Ultra included, so routing is a real
+  three-tier funnel. `chat_template_kwargs` reasoning control works. Exact IDs,
+  prices and the 200K/min throughput ceiling are in spec §10.
+
+**One trap worth remembering:** Sandboxes authorise on a `Project` header as
+well as a bearer token. A key that works for `/v1/chat/completions` fails here
+with a bare `ForbiddenError` if `NEBIUS_PROJECT_ID` is unset — which reads as a
+missing entitlement and is not one. Set both env vars.
 
 ---
 
