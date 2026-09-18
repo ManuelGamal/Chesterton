@@ -57,15 +57,16 @@ begin with `test`.
 Raised by the final whole-branch review and deliberately not fixed in Phase 1.
 Ordered by how much damage each can do.
 
-**I4 — the coverage map's tree provenance is unpinned.** `defended.py` joins
-**post-patch** line numbers into a map whose origin nothing states. Spec §4
-builds the baseline checkpoint from the base SHA; if the coverage map is
-captured on the base tree, every added line indexes into unrelated content —
-added lines reported as "defended" by tests that never ran them, or the whole
-PR reported undefended. No docstring, type, or test pins this today. Relatedly,
-`semantic_hunks` does not bounds-check `lines` against `source`, so a
-wrong-tree source degrades silently rather than loudly. **Settle this contract
-before writing the seed pipeline** — it is the most likely source of a
+**I4 — the coverage map's tree provenance is unpinned.** *(Partially closed —
+see "Merged from the parallel branch" below.)* `defended.py` joins **post-patch**
+line numbers into a map whose origin nothing states. Spec §4 builds the baseline
+checkpoint from the base SHA; if the coverage map is captured on the base tree,
+every added line indexes into unrelated content — added lines reported as
+"defended" by tests that never ran them, or the whole PR reported undefended.
+`semantic_hunks` now documents its coordinate contract and rejects lines outside
+its source, but **`CoverageMap` still carries no such contract**, and a mismatch
+that happens to land in range still passes silently. **Settle the coverage-map
+side before writing the seed pipeline** — it remains the most likely source of a
 confidently wrong answer.
 
 **I3 — no Python-file filter anywhere in the pipeline.** A README, YAML, or
@@ -121,3 +122,32 @@ defects reached implementation and were caught only by review, each producing
 
 The last one is the project's own thesis turned on itself — a tool whose pitch
 is *executed proof, not opinion* was fabricating evidence.
+
+---
+
+## Merged from the parallel branch
+
+A second branch, `phase-1-foundations`, executed this plan independently —
+but from the **pre-critique** version, before the seven-agent task review
+revised it. It was compared file by file against this work.
+
+**Superseded by this branch** (the critique fixed these before implementation):
+the hand-rolled diff parser with its `+++ /dev/null` and no-newline defects;
+widest-first span selection, which lets any line inside a large `try` swallow
+the whole block; no `paths.py` and so no path normalisation anywhere; a GitHub
+client with `raise_for_status` but no retries, no rate-limit handling and raw
+`meta["base"]["sha"]` indexing; no `aclose` on the protocol; no `tag` on the
+adapter; and 33 tests that are a strict subset of this branch's 57.
+
+**Adopted from it** (commit `10518cb`) — two things it genuinely did better:
+
+1. **The coordinate contract**, documented in `semantic.py`'s module docstring.
+   This branch had left it implicit, and the final review named it the most
+   likely source of a confidently wrong answer.
+2. **A bounds guard** on `semantic_hunks`. That branch rejected `line < 1`;
+   this version also rejects lines past the end of the source, which is the
+   detectable half of a wrong-tree mismatch and the likelier one in practice.
+
+The lesson worth keeping: the parallel run's only wins were a *docstring* and a
+*guard clause* — the two things a plan tends not to specify and a reviewer tends
+not to demand. Everything the critique process caught, it caught better.
