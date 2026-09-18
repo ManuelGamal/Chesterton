@@ -43,3 +43,52 @@ async def test_missing_sdk_raises_an_actionable_error(monkeypatch):
 
     with pytest.raises(RuntimeError, match="contree-sdk is not installed"):
         await runner.use_image("ubuntu:latest")
+
+
+def test_the_sdk_surface_this_adapter_depends_on_actually_exists():
+    """Pin the real contree-sdk API, offline, with no network or credentials.
+
+    The shape-only tests above cannot catch a wrong import path, a wrong
+    constructor signature, or a wrong attribute type — and an earlier version
+    of the adapter was wrong in all three ways while every test passed. This
+    test builds a real client and asserts the surface the adapter calls.
+    """
+    pytest.importorskip("contree_sdk", reason="sandbox extra not installed")
+
+    import inspect
+
+    from contree_sdk import Contree
+    from contree_sdk.sdk.objects.image import ContreeImage
+
+    # The constructor takes base_url/token directly — there is no separate
+    # client package to build and hand in.
+    params = inspect.signature(Contree.__init__).parameters
+    assert "base_url" in params
+    assert "token" in params
+
+    sdk = Contree(base_url="https://example.invalid", token="unused")
+    assert hasattr(sdk.images, "use")
+    assert hasattr(sdk.images, "oci")
+
+    # run() must accept every keyword the adapter passes.
+    run_params = inspect.signature(ContreeImage.run).parameters
+    for keyword in ("shell", "files", "disposable", "tag"):
+        assert keyword in run_params, f"ContreeImage.run lost the {keyword} keyword"
+
+    # The adapter awaits run(); ContreeImage is awaitable even though run
+    # itself is not a coroutine function.
+    assert hasattr(ContreeImage, "__await__")
+
+    # Results are read off the returned image, not a separate result object.
+    for prop in ("stdout", "stderr", "exit_code"):
+        assert isinstance(getattr(ContreeImage, prop), property)
+
+
+def test_the_adapter_builds_a_real_client_without_network_or_credentials():
+    pytest.importorskip("contree_sdk", reason="sandbox extra not installed")
+
+    runner = ConTreeSandboxRunner(api_key="unused")
+    sdk = runner._handle()
+
+    assert sdk is not None
+    assert runner._handle() is sdk  # built once, cached
