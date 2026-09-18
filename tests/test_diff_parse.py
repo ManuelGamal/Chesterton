@@ -7,7 +7,7 @@ DIFF = (FIXTURES / "pr.diff").read_text()
 
 
 def test_reports_added_lines_in_post_patch_coordinates():
-    # Hunk header @@ -30,3 +29,4 @@ resumes the new file at line 29, so the
+    # Hunk header @@ -30,2 +29,3 @@ resumes the new file at line 29, so the
     # context line is 29 and the added line is 30.
     assert changed_lines(DIFF)["widgets/users.py"] == [30]
 

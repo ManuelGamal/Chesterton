@@ -13,7 +13,7 @@ per mutant and throw away the reason coverage contexts were captured at all.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from chesterton.models import CoverageMap, Hunk
@@ -58,11 +58,22 @@ def covering_tests(hunk: Hunk, covmap: CoverageMap) -> list[str]:
 
 
 def uncovered_findings(
-    hunks: Sequence[Hunk], covmap: CoverageMap
+    hunks: Sequence[Hunk],
+    covmap: CoverageMap,
+    changed: Mapping[str, Sequence[int]],
 ) -> list[tuple[str, int]]:
-    """Tier-0 findings: (file, line) for every changed line no test executes."""
+    """Tier-0 findings: (file, line) for every CHANGED line no test executes.
+
+    Hunks are deliberately wider than the lines the PR touched — semantic
+    grouping expands to whole statements so mutation operators have something
+    meaningful to work on. Findings must not inherit that width: a
+    continuation line the author never touched, which coverage.py cannot even
+    record, is not evidence of anything. Intersect with the changed set.
+    """
+    changed_by_file = {file: set(lines) for file, lines in changed.items()}
     return [
         (defence.hunk.file, line)
         for defence in defended_hunks(hunks, covmap)
         for line in defence.uncovered_lines
+        if line in changed_by_file.get(defence.hunk.file, set())
     ]

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import itertools
 from collections.abc import Mapping
+from dataclasses import replace
 
 from chesterton.sandbox.protocol import RunResult
 
@@ -36,6 +37,8 @@ class FakeSandboxRunner:
 
         scripted = self._responses.get(shell)
         if scripted is not None:
+            if disposable:
+                return replace(scripted, checkpoint_id=None)
             return scripted
 
         new_id = None if disposable else f"ckpt-{next(self._ids)}"

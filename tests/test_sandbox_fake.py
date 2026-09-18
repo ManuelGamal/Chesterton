@@ -73,6 +73,19 @@ async def test_disposable_run_has_no_reusable_checkpoint():
     assert result.checkpoint_id is None
 
 
+async def test_a_scripted_result_still_honours_the_disposable_rule():
+    # The fake must not promise a checkpoint the live service would not give.
+    runner = FakeSandboxRunner(
+        responses={"pytest -q": RunResult("2 passed", "", 0, "ckpt-1")}
+    )
+    base = await runner.use_image("python:3.13")
+
+    result = await runner.run(base, "pytest -q", disposable=True)
+
+    assert result.checkpoint_id is None
+    assert result.stdout == "2 passed"
+
+
 async def test_aclose_is_safe_to_call():
     runner = FakeSandboxRunner()
     await runner.aclose()

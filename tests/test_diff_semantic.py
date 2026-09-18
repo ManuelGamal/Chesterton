@@ -71,3 +71,10 @@ def test_unparseable_source_falls_back_to_one_hunk_per_line():
 def test_a_line_outside_any_statement_still_yields_a_hunk():
     hunks = semantic_hunks(SOURCE, "users.py", [5])
     assert (hunks[0].start_line, hunks[0].end_line) == (5, 5)
+
+
+def test_the_hunk_path_is_normalised_to_forward_slashes():
+    # Every other boundary normalises; if this one does not, hunks never
+    # match a coverage map and covered lines are reported as undefended.
+    hunks = semantic_hunks(SOURCE, "widgets\\users.py", [4])
+    assert hunks[0].file == "widgets/users.py"

@@ -48,7 +48,9 @@ def test_a_partly_covered_hunk_is_not_fully_uncovered():
 def test_tier_zero_findings_are_reported_per_line_not_per_hunk():
     # A partly covered hunk still contains undefended lines, and each one is
     # a finding. Rolling them into one boolean hides most of them.
-    findings = uncovered_findings([Hunk("users.py", 2, 8)], COVMAP)
+    findings = uncovered_findings(
+        [Hunk("users.py", 2, 8)], COVMAP, {"users.py": [2, 3, 4, 5, 6, 7, 8]}
+    )
     assert findings == [
         ("users.py", 4),
         ("users.py", 5),
@@ -56,6 +58,15 @@ def test_tier_zero_findings_are_reported_per_line_not_per_hunk():
         ("users.py", 7),
         ("users.py", 8),
     ]
+
+
+def test_findings_exclude_hunk_lines_the_pull_request_never_changed():
+    # semantic_hunks widens a hunk to whole statements, so a hunk contains
+    # lines the author never touched. Those are not findings — reporting them
+    # would be fabricating evidence.
+    hunk = Hunk("users.py", 2, 8)
+    findings = uncovered_findings([hunk], COVMAP, {"users.py": [8]})
+    assert findings == [("users.py", 8)]
 
 
 def test_tests_are_selected_per_hunk_not_unioned_across_hunks():
@@ -71,7 +82,7 @@ def test_tests_are_selected_per_hunk_not_unioned_across_hunks():
 
 def test_an_empty_hunk_list_yields_no_defences_and_no_findings():
     assert defended_hunks([], COVMAP) == []
-    assert uncovered_findings([], COVMAP) == []
+    assert uncovered_findings([], COVMAP, {}) == []
 
 
 def test_an_empty_coverage_map_makes_everything_uncovered():

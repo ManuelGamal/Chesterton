@@ -21,6 +21,7 @@ import ast
 from collections.abc import Sequence
 
 from chesterton.models import Hunk
+from chesterton.paths import normalise_path
 
 #: Bodies too coarse to ever be a hunk.
 _TOO_COARSE = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
@@ -87,6 +88,7 @@ def _resolve(line: int, candidates: list[tuple[int, int, ast.AST]]) -> tuple[int
 
 
 def semantic_hunks(source: str, path: str, lines: Sequence[int]) -> list[Hunk]:
+    path = normalise_path(path)
     candidates = _candidates(source)
     spans = {_resolve(line, candidates) for line in lines}
 
