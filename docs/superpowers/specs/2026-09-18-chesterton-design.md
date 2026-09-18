@@ -372,6 +372,34 @@ quality, not on the reasoning here.
 **Nemotron 3 Nano Omni is NOT served** — it does not appear in the live model
 list. Nothing in this design needs it.
 
+### Reasoning is on by default, and it is inline (verified 2026-09-18)
+
+A five-token completion against Ultra returned `reasoning_tokens: 5`,
+`reasoning_content: null`, and chain-of-thought text in `content` —
+`"The user wants a single"` in reply to "Reply with the single word: ok".
+
+Two consequences, both binding:
+
+1. **Budget `max_tokens` for thinking plus answer.** A limit sized for the
+   answer alone returns truncated reasoning and no answer at all.
+2. **Reasoning is not separated into `reasoning_content`; it prepends into
+   `content`.** Any step that parses a structured reply — the `json_schema`
+   triage verdicts in §9 above all — must either disable thinking for that
+   call or extract the payload from a response that begins with prose.
+   Do not assume `json.loads(content)` will work.
+
+This makes reasoning-budget control load-bearing rather than an optimisation,
+and it is still unverified whether Nebius honours `chat_template_kwargs`
+(`enable_thinking`, `reasoning_budget`). Settle that before building the triage
+step; if the controls are ignored, triage needs a tolerant parser instead.
+
+**Prompt caching exists** (`prompt_cache_hit_tokens` / `prompt_cache_miss_tokens`
+are reported per call). The fan-out sends near-identical prompts thousands of
+times per run, so holding the shared prefix stable is worth real money — order
+prompts so the invariant part comes first.
+
+Inference is served through **vLLM** (`system_fingerprint: vllm-…-tp8`).
+
 Routing is made **legible** in the UI via a live counter: "412 Nano calls ·
 9 Super · $0.04 · 24 sandboxes forked from 1 checkpoint." Judges reward smart
 routing only if they can see it.
