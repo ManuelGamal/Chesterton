@@ -54,6 +54,28 @@ def _comparator_text(node: cst.Comparison, index: int) -> str:
     return f"{_snippet(left)} {operator} {_snippet(target.comparator)}"
 
 
+def _is_guard(node: cst.If) -> bool:
+    """True when an if-block exists only to bail out.
+
+    A guard's body is nothing but a raise or a return. An if that does real
+    work is a different mutation entirely — deleting it is noisy rather than
+    pointed, and the spec's operator is specifically the quiet removal of a
+    bail-out.
+    """
+    if node.orelse is not None:
+        return False
+    body = node.body.body if isinstance(node.body, cst.IndentedBlock) else []
+    if not body:
+        return False
+    for statement in body:
+        if not isinstance(statement, cst.SimpleStatementLine):
+            return False
+        for small in statement.body:
+            if not isinstance(small, (cst.Raise, cst.Return)):
+                return False
+    return True
+
+
 class _Collector(cst.CSTVisitor):
     METADATA_DEPENDENCIES = (PositionProvider,)
 
@@ -87,6 +109,51 @@ class _Collector(cst.CSTVisitor):
                     "invert_condition",
                     line,
                     f"negate {_snippet(node.test)}",
+                    column=self._column(node),
+                )
+            )
+        if line in self.lines and _is_guard(node):
+            self.found.append(
+                Candidate(
+                    "delete_guard",
+                    line,
+                    f"delete guard {_snippet(node.test)}",
+                    column=self._column(node),
+                )
+            )
+
+    def visit_Await(self, node: cst.Await) -> None:
+        line = self._line(node)
+        if line in self.lines:
+            self.found.append(
+                Candidate(
+                    "drop_await",
+                    line,
+                    f"drop await on {_snippet(node.expression)}",
+                    column=self._column(node),
+                )
+            )
+
+    def visit_ExceptHandler(self, node: cst.ExceptHandler) -> None:
+        line = self._line(node)
+        if line in self.lines and node.type is not None:
+            self.found.append(
+                Candidate(
+                    "widen_except",
+                    line,
+                    f"widen {_snippet(node.type)} to bare except",
+                    column=self._column(node),
+                )
+            )
+
+    def visit_Finally(self, node: cst.Finally) -> None:
+        line = self._line(node)
+        if line in self.lines:
+            self.found.append(
+                Candidate(
+                    "remove_cleanup",
+                    line,
+                    "empty the finally block",
                     column=self._column(node),
                 )
             )
@@ -132,6 +199,9 @@ class _Applier(cst.CSTTransformer):
         return updated
 
     def leave_If(self, original: cst.If, updated: cst.If):
+        if self._hits(original, "delete_guard"):
+            self.applied = True
+            return cst.RemoveFromParent()
         if self._hits(original, "invert_condition"):
             self.applied = True
             return updated.with_changes(
@@ -140,6 +210,40 @@ class _Applier(cst.CSTTransformer):
                     expression=cst.parse_expression(
                         f"({cst.Module(body=[]).code_for_node(updated.test)})"
                     ),
+                )
+            )
+        return updated
+
+    def leave_Await(self, original: cst.Await, updated: cst.Await):
+        if self._hits(original, "drop_await"):
+            self.applied = True
+            return updated.expression
+        return updated
+
+    def leave_ExceptHandler(
+        self, original: cst.ExceptHandler, updated: cst.ExceptHandler
+    ):
+        if self._hits(original, "widen_except"):
+            self.applied = True
+            # Dropping the type leaves LibCST's whitespace_after_except intact,
+            # which renders `except :`. Valid Python, but it reads as a tool
+            # artifact rather than a plausible human edit — and a mutant that
+            # looks machine-generated undermines the finding it supports.
+            return updated.with_changes(
+                type=None,
+                name=None,
+                whitespace_after_except=cst.SimpleWhitespace(""),
+            )
+        return updated
+
+    def leave_Finally(self, original: cst.Finally, updated: cst.Finally):
+        if self._hits(original, "remove_cleanup"):
+            self.applied = True
+            # Emptied, not deleted: removing the clause from a try that has no
+            # except handler would leave invalid Python.
+            return updated.with_changes(
+                body=cst.IndentedBlock(
+                    body=[cst.SimpleStatementLine(body=[cst.Pass()])]
                 )
             )
         return updated
