@@ -700,7 +700,7 @@ diff --git a/widgets/users.py b/widgets/users.py
 index 1111111..2222222 100644
 --- a/widgets/users.py
 +++ b/widgets/users.py
-@@ -10,7 +10,6 @@ def get_user(user_id):
+@@ -10,7 +10,5 @@ def get_user(user_id):
      cached = _cache.get(user_id)
      if cached is not None:
          return cached
@@ -708,11 +708,17 @@ index 1111111..2222222 100644
 -        raise ValueError("user_id required")
      row = _db.fetch(user_id)
      return row
-@@ -30,3 +29,4 @@ def list_users(limit):
+@@ -30,2 +29,3 @@ def list_users(limit):
      rows = _db.fetch_all()
 +    rows = rows[:limit]
      return rows
 ```
+
+**Hunk header arithmetic matters — `unidiff` validates it.** Old-side count
+is context + removed; new-side count is context + added. Hunk 1: 5 context,
+2 removed, 0 added, so `-10,7 +10,5`. Hunk 2: 2 context, 0 removed, 1 added,
+so `-30,2 +29,3`. Getting these wrong makes the file unparseable, and
+"repairing" the body to match a bad header silently destroys the example.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -1632,13 +1638,20 @@ lever this phase exists to build. And `is_uncovered` was true only when *every*
 line in a hunk was uncovered, hiding per-line tier-0 findings; it is renamed
 `fully_uncovered`, and tier-0 findings are emitted per uncovered line.
 
+**Naming constraint — do not rename this back.** The per-hunk selector is
+`covering_tests`, not `tests_for_hunk`. pytest's default collection glob is
+`python_functions = test*`, so a public function whose name begins with `test`
+gets collected as a test case the moment a test module imports it — producing
+`fixture 'hunk' not found` and a non-zero exit even while every real test
+passes. Any public symbol a test module imports must not start with `test`.
+
 **Files:**
 - Create: `src/chesterton/defended.py`
 - Test: `tests/test_defended.py`
 
 **Interfaces:**
 - Consumes: `Hunk`, `CoverageMap` (Task 3), `semantic_hunks` (Task 5), `invert_coverage` (Task 6).
-- Produces: `HunkDefence(hunk, tests, uncovered_lines)` with `.fully_uncovered: bool`; `defended_hunks(hunks, covmap) -> list[HunkDefence]`; `tests_for_hunk(hunk, covmap) -> list[str]`; `uncovered_findings(hunks, covmap) -> list[tuple[str, int]]`.
+- Produces: `HunkDefence(hunk, tests, uncovered_lines)` with `.fully_uncovered: bool`; `defended_hunks(hunks, covmap) -> list[HunkDefence]`; `covering_tests(hunk, covmap) -> list[str]`; `uncovered_findings(hunks, covmap) -> list[tuple[str, int]]`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1647,7 +1660,7 @@ line in a hunk was uncovered, hiding per-line tier-0 findings; it is renamed
 ```python
 from chesterton.defended import (
     defended_hunks,
-    tests_for_hunk,
+    covering_tests,
     uncovered_findings,
 )
 from chesterton.models import Hunk
@@ -1707,10 +1720,10 @@ def test_tier_zero_findings_are_reported_per_line_not_per_hunk():
 
 def test_tests_are_selected_per_hunk_not_unioned_across_hunks():
     # Each mutant targets ONE hunk and must run only that hunk's tests.
-    assert tests_for_hunk(Hunk("users.py", 2, 2), COVMAP) == [
+    assert covering_tests(Hunk("users.py", 2, 2), COVMAP) == [
         "tests/test_users.py::test_get_user"
     ]
-    assert tests_for_hunk(Hunk("users.py", 3, 3), COVMAP) == [
+    assert covering_tests(Hunk("users.py", 3, 3), COVMAP) == [
         "tests/test_users.py::test_blank",
         "tests/test_users.py::test_get_user",
     ]
@@ -1791,7 +1804,7 @@ def defended_hunks(
     return [_defence(hunk, covmap) for hunk in hunks]
 
 
-def tests_for_hunk(hunk: Hunk, covmap: CoverageMap) -> list[str]:
+def covering_tests(hunk: Hunk, covmap: CoverageMap) -> list[str]:
     """The tests one mutant of this hunk must run. Never a cross-hunk union."""
     return _defence(hunk, covmap).tests
 
