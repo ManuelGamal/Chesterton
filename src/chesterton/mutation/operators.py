@@ -24,6 +24,12 @@ class Candidate:
     operator: str
     line: int
     description: str
+    #: Start column of the target node. Line alone cannot distinguish two
+    #: mutable nodes on the same line, and picking the wrong one would
+    #: mis-attribute a surviving mutant.
+    column: int = 0
+    #: Which comparator within a Comparison node. Ignored by other operators.
+    index: int = 0
 
 
 #: Boundary flips that produce an off-by-one rather than a negation.
@@ -40,6 +46,14 @@ def _snippet(node: cst.CSTNode) -> str:
     return text if len(text) <= 60 else text[:57] + "..."
 
 
+def _comparator_text(node: cst.Comparison, index: int) -> str:
+    """Render just the one comparison being targeted, e.g. `a > b`."""
+    left = node.left if index == 0 else node.comparisons[index - 1].comparator
+    target = node.comparisons[index]
+    operator = cst.Module(body=[]).code_for_node(target.operator).strip()
+    return f"{_snippet(left)} {operator} {_snippet(target.comparator)}"
+
+
 class _Collector(cst.CSTVisitor):
     METADATA_DEPENDENCIES = (PositionProvider,)
 
@@ -50,11 +64,19 @@ class _Collector(cst.CSTVisitor):
     def _line(self, node: cst.CSTNode) -> int:
         return self.get_metadata(PositionProvider, node).start.line
 
+    def _column(self, node: cst.CSTNode) -> int:
+        return self.get_metadata(PositionProvider, node).start.column
+
     def visit_Decorator(self, node: cst.Decorator) -> None:
         line = self._line(node)
         if line in self.lines:
             self.found.append(
-                Candidate("strip_decorator", line, f"remove {_snippet(node)}")
+                Candidate(
+                    "strip_decorator",
+                    line,
+                    f"remove {_snippet(node)}",
+                    column=self._column(node),
+                )
             )
 
     def visit_If(self, node: cst.If) -> None:
@@ -62,7 +84,10 @@ class _Collector(cst.CSTVisitor):
         if line in self.lines:
             self.found.append(
                 Candidate(
-                    "invert_condition", line, f"negate {_snippet(node.test)}"
+                    "invert_condition",
+                    line,
+                    f"negate {_snippet(node.test)}",
+                    column=self._column(node),
                 )
             )
 
@@ -70,10 +95,18 @@ class _Collector(cst.CSTVisitor):
         line = self._line(node)
         if line not in self.lines:
             return
-        if any(type(c.operator) in _WIDEN for c in node.comparisons):
-            self.found.append(
-                Candidate("off_by_one", line, f"shift boundary in {_snippet(node)}")
-            )
+        column = self._column(node)
+        for index, target in enumerate(node.comparisons):
+            if type(target.operator) in _WIDEN:
+                self.found.append(
+                    Candidate(
+                        "off_by_one",
+                        line,
+                        f"shift boundary in {_comparator_text(node, index)}",
+                        column=column,
+                        index=index,
+                    )
+                )
 
 
 class _Applier(cst.CSTTransformer):
@@ -83,10 +116,14 @@ class _Applier(cst.CSTTransformer):
         self.target = target
         self.applied = False
 
+    def _column(self, node: cst.CSTNode) -> int:
+        return self.get_metadata(PositionProvider, node).start.column
+
     def _hits(self, node: cst.CSTNode, operator: str) -> bool:
         if self.applied or self.target.operator != operator:
             return False
-        return self.get_metadata(PositionProvider, node).start.line == self.target.line
+        position = self.get_metadata(PositionProvider, node).start
+        return position.line == self.target.line and position.column == self.target.column
 
     def leave_Decorator(self, original: cst.Decorator, updated: cst.Decorator):
         if self._hits(original, "strip_decorator"):
@@ -111,12 +148,11 @@ class _Applier(cst.CSTTransformer):
         if not self._hits(original, "off_by_one"):
             return updated
         self.applied = True
-        widened = []
-        for target in updated.comparisons:
-            replacement = _WIDEN.get(type(target.operator))
-            if replacement is not None:
-                target = target.with_changes(operator=replacement())
-            widened.append(target)
+        widened = list(updated.comparisons)
+        index = self.target.index
+        replacement = _WIDEN.get(type(widened[index].operator))
+        if replacement is not None:
+            widened[index] = widened[index].with_changes(operator=replacement())
         return updated.with_changes(comparisons=widened)
 
 

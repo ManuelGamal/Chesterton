@@ -65,3 +65,30 @@ def test_every_candidate_carries_a_human_readable_description():
     for candidate in find_candidates(DECORATED, [1, 3]):
         assert candidate.description
         assert candidate.line > 0
+
+
+CHAINED = "def f(a, b, c):\n    if a < b < c:\n        return 1\n"
+TWIN = "def f(a, b, c, d):\n    if a > b and c > d:\n        return 1\n"
+
+
+def test_a_chained_comparison_offers_one_candidate_per_comparator():
+    cands = [c for c in find_candidates(CHAINED, [2]) if c.operator == "off_by_one"]
+    assert len(cands) == 2
+
+
+def test_applying_one_chained_candidate_shifts_exactly_one_boundary():
+    # Flipping both operators at once is the super-mutant this design exists
+    # to prevent: a surviving super-mutant says nothing about which change
+    # the tests missed.
+    cands = [c for c in find_candidates(CHAINED, [2]) if c.operator == "off_by_one"]
+    results = {apply_candidate(CHAINED, c).splitlines()[1].strip() for c in cands}
+    assert results == {"if a <= b < c:", "if a < b <= c:"}
+
+
+def test_two_comparisons_on_one_line_are_separately_addressable():
+    # Each candidate must mutate the comparison its description names.
+    # Otherwise a surviving mutant is attributed to untouched code.
+    cands = [c for c in find_candidates(TWIN, [2]) if c.operator == "off_by_one"]
+    assert len(cands) == 2
+    results = {apply_candidate(TWIN, c).splitlines()[1].strip() for c in cands}
+    assert results == {"if a >= b and c > d:", "if a > b and c >= d:"}
