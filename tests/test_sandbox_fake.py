@@ -1,4 +1,4 @@
-﻿from chesterton.sandbox.fake import FakeSandboxRunner
+from chesterton.sandbox.fake import FakeSandboxRunner
 from chesterton.sandbox.protocol import RunResult
 
 

@@ -44,6 +44,7 @@ async def _get(
     *,
     accept: str | None = None,
     max_retries: int = 3,
+    backoff_base: float = 1.0,
 ) -> httpx.Response:
     headers = _auth_headers()
     if accept:
@@ -59,7 +60,7 @@ async def _get(
         if response.status_code not in _RETRY_STATUS:
             break
         if attempt < max_retries - 1:
-            await asyncio.sleep(2**attempt)
+            await asyncio.sleep(backoff_base * (2**attempt))
 
     assert last is not None
     remaining = last.headers.get("x-ratelimit-remaining")
@@ -89,9 +90,14 @@ async def fetch_pull_request(
     *,
     client: httpx.AsyncClient,
     max_retries: int = 3,
+    backoff_base: float = 1.0,
 ) -> PullRequest:
     meta_url = f"{API}/repos/{owner}/{repo}/pulls/{number}"
-    meta = (await _get(client, meta_url, max_retries=max_retries)).json()
+    meta = (
+        await _get(
+            client, meta_url, max_retries=max_retries, backoff_base=backoff_base
+        )
+    ).json()
 
     base_sha = _dig(meta, "base", "sha", url=meta_url)
     head_sha = _dig(meta, "head", "sha", url=meta_url)
@@ -101,7 +107,11 @@ async def fetch_pull_request(
     # GitHub computes .diff against the MERGE BASE, not base.sha. Using
     # base.sha here puts every downstream mutation on the wrong line.
     compare_url = f"{API}/repos/{owner}/{repo}/compare/{base_sha}...{head_sha}"
-    compare = (await _get(client, compare_url, max_retries=max_retries)).json()
+    compare = (
+        await _get(
+            client, compare_url, max_retries=max_retries, backoff_base=backoff_base
+        )
+    ).json()
     merge_base_sha = _dig(compare, "merge_base_commit", "sha", url=compare_url)
 
     # A second request to the same URL: the diff needs a different Accept
@@ -112,6 +122,7 @@ async def fetch_pull_request(
             meta_url,
             accept="application/vnd.github.diff",
             max_retries=max_retries,
+            backoff_base=backoff_base,
         )
     ).text
 

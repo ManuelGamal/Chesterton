@@ -1,4 +1,4 @@
-﻿"""The sandbox boundary.
+"""The sandbox boundary.
 
 Everything downstream talks to this protocol, never to ConTree directly.
 That is what lets the whole pipeline run offline against a fake.

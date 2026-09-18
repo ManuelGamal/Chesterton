@@ -31,7 +31,9 @@ def test_a_changed_line_expands_to_its_guard_clause():
 
 
 def test_adjacent_lines_in_one_guard_produce_one_hunk():
-    assert len(semantic_hunks(SOURCE, "users.py", [2, 3])) == 1
+    hunks = semantic_hunks(SOURCE, "users.py", [2, 3])
+    assert len(hunks) == 1
+    assert (hunks[0].start_line, hunks[0].end_line) == (2, 3)
 
 
 def test_lines_in_different_functions_produce_separate_hunks():
@@ -60,8 +62,10 @@ def test_a_decorator_line_yields_a_single_line_hunk():
 
 
 def test_unparseable_source_falls_back_to_one_hunk_per_line():
-    hunks = semantic_hunks("def broken(:\n", "x.py", [1])
+    hunks = semantic_hunks("def broken(:\nx = (\n", "x.py", [1, 2])
+    assert len(hunks) == 2
     assert (hunks[0].start_line, hunks[0].end_line) == (1, 1)
+    assert (hunks[1].start_line, hunks[1].end_line) == (2, 2)
 
 
 def test_a_line_outside_any_statement_still_yields_a_hunk():

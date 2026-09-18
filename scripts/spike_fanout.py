@@ -24,21 +24,29 @@ FANOUT = 24
 TARGET_SECONDS = 20.0
 
 
-async def one_fork(runner, checkpoint_id: str, test_cmd: str) -> tuple[float, bool]:
+async def one_fork(runner, checkpoint_id: str, test_cmd: str) -> tuple[float, str]:
+    """Run one disposable fork. outcome is "ran", "cmd_failed", or "errored".
+
+    An errored sandbox operation is never merged with a real result: it is
+    excluded from timing and pass/fail statistics entirely.
+    """
     start = time.perf_counter()
     try:
         result = await runner.run(checkpoint_id, test_cmd, disposable=True)
-        ok = result.exit_code in (0, 1)  # 1 == tests ran and failed; still a run
     except Exception as exc:  # an errored op is never a result
         print(f"  fork errored: {type(exc).__name__}: {exc}")
-        return time.perf_counter() - start, False
-    return time.perf_counter() - start, ok
+        return time.perf_counter() - start, "errored"
+
+    elapsed = time.perf_counter() - start
+    if result.exit_code in (0, 1):  # 1 == tests ran and failed; still a run
+        return elapsed, "ran"
+    return elapsed, "cmd_failed"
 
 
 async def one_round(runner, checkpoint_id: str, test_cmd: str) -> dict:
     sem = asyncio.Semaphore(FANOUT)
 
-    async def guarded() -> tuple[float, bool]:
+    async def guarded() -> tuple[float, str]:
         async with sem:
             return await one_fork(runner, checkpoint_id, test_cmd)
 
@@ -46,13 +54,16 @@ async def one_round(runner, checkpoint_id: str, test_cmd: str) -> dict:
     outcomes = await asyncio.gather(*(guarded() for _ in range(FANOUT)))
     wall = time.perf_counter() - start
 
-    timings = [t for t, _ in outcomes]
-    failures = sum(1 for _, ok in outcomes if not ok)
+    ran_timings = [t for t, outcome in outcomes if outcome == "ran"]
+    cmd_failed = sum(1 for _, outcome in outcomes if outcome == "cmd_failed")
+    errored = sum(1 for _, outcome in outcomes if outcome == "errored")
     return {
         "wall": wall,
-        "median": statistics.median(timings),
-        "p_slowest": max(timings),
-        "failures": failures,
+        "median": statistics.median(ran_timings) if ran_timings else None,
+        "p_slowest": max(ran_timings) if ran_timings else None,
+        "ran": len(ran_timings),
+        "cmd_failed": cmd_failed,
+        "errored": errored,
     }
 
 
@@ -84,21 +95,38 @@ async def main(image_ref: str, test_cmd: str, rounds: int) -> None:
         print(f"\nRound {i + 1}/{rounds}: forking {FANOUT} ways, running tests ...")
         r = await one_round(runner, prepped.checkpoint_id, test_cmd)
         results.append(r)
+        median_str = f"{r['median']:.2f}s" if r["median"] is not None else "n/a"
+        slowest_str = f"{r['p_slowest']:.2f}s" if r["p_slowest"] is not None else "n/a"
         print(
-            f"  wall {r['wall']:.1f}s | median fork {r['median']:.2f}s | "
-            f"slowest {r['p_slowest']:.2f}s | failed {r['failures']}/{FANOUT}"
+            f"  wall {r['wall']:.1f}s | median fork {median_str} | "
+            f"slowest {slowest_str} | ran {r['ran']}/{FANOUT} | "
+            f"cmd_failed {r['cmd_failed']}/{FANOUT} | errored {r['errored']}/{FANOUT}"
         )
 
     walls = [r["wall"] for r in results]
     worst = max(walls)
     spread = max(walls) - min(walls)
-    total_failures = sum(r["failures"] for r in results)
+    total_ran = sum(r["ran"] for r in results)
+    total_cmd_failed = sum(r["cmd_failed"] for r in results)
+    total_errored = sum(r["errored"] for r in results)
+    total_forks = FANOUT * rounds
 
     print("\n=== SPIKE RESULT ===")
     print(f"  baseline build     : {build:.1f}s (one-time, cached)")
     print(f"  worst-case wall    : {worst:.1f}s over {rounds} round(s)")
     print(f"  round-to-round spread: {spread:.1f}s")
-    print(f"  failed forks       : {total_failures}/{FANOUT * rounds}")
+    print(f"  ran (in timing stats): {total_ran}/{total_forks}")
+    print(f"  cmd_failed         : {total_cmd_failed}/{total_forks}")
+    print(f"  errored            : {total_errored}/{total_forks}")
+    print(
+        "  note: errored forks are infrastructure failures, not test results — "
+        "they are excluded from the timing statistics above."
+    )
+    if total_cmd_failed == total_forks:
+        print(
+            "  HINT: every fork returned cmd_failed — the test command is "
+            "probably wrong, not the platform."
+        )
     print(f"\n  VERDICT: {'GO' if worst < TARGET_SECONDS else 'REDESIGN — see spec section 15'}")
     print("  Record all four numbers in spec section 15.")
 

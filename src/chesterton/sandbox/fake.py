@@ -1,4 +1,4 @@
-﻿"""In-memory SandboxRunner for tests.
+"""In-memory SandboxRunner for tests.
 
 Deterministic, instant, and records every call so tests can assert on the
 commands and files the pipeline issued.

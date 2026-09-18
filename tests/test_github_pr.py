@@ -77,7 +77,9 @@ async def test_rate_limit_is_retried_then_surfaces_as_github_error():
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
         with pytest.raises(GitHubError, match="rate limit"):
-            await fetch_pull_request("acme", "widgets", 42, client=c, max_retries=2)
+            await fetch_pull_request(
+                "acme", "widgets", 42, client=c, max_retries=2, backoff_base=0
+            )
 
     assert calls["n"] == 2
 
