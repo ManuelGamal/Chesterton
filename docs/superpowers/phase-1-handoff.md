@@ -1,6 +1,6 @@
 # Phase 1 handoff
 
-**Completed:** 2026-09-18 · **Merged:** `112bfd2` · **Suite:** 57 passed, 0.12s, no network
+**Completed:** 2026-09-18 · **Merged:** `112bfd2` · **Suite:** 60 passed, no network
 
 Phase 1 built the offline-testable foundation: a sandbox abstraction behind a
 protocol, GitHub PR ingest with correct merge-base handling, diff parsing,
@@ -13,14 +13,19 @@ for the design it implements.
 
 ## Blocked on you
 
-**One item remains.**
+**Nothing.** Every open item in this document is closed. Phase 1 is verified
+end to end against the live service, and Phase 2 can start.
 
-1. **Verify the prebuilt SWE-rebench images actually pull.** The plan's scoping
-   decision — curated seeds only, no arbitrary repos — rests entirely on Nebius
-   publishing ~7,500 prebuilt images loadable via `images.oci("docker://…")`.
-   That claim comes from a HuggingFace discussion thread, not formal docs. Pull
-   two or three specific images before designing Phase 3 around them. This
-   determines **scope**, not architecture — the architecture is now verified.
+The one measurement still worth taking is not a blocker: re-run the fan-out
+spike against a *real* test suite rather than the synthetic `sleep` used for
+the first reading. Real suites contend for CPU and I/O, so the number will be
+worse, and knowing how much worse sizes the semaphore honestly.
+
+```
+python scripts/spike_fanout.py \
+  docker://swerebench/sweb.eval.x86_64.iamconsortium_1776_nomenclature-284 \
+  "python -m pytest -q -x" 3
+```
 
 ### Closed since this document was written
 
@@ -37,6 +42,11 @@ for the design it implements.
 - **Also verified live:** forks inherit parent filesystem state, tagging works,
   disposable runs yield no reusable checkpoint, and — previously undocumented —
   **sandboxes CAN reach the inference API** over DNS and TCP:443.
+- ~~**Verify the prebuilt SWE-rebench images pull.**~~ **Done: 4/4 usable**,
+  each with a repo at `/testbed` and an interpreter. Namespace `swerebench/`
+  on Docker Hub; the reference per instance is the dataset's `docker_image`
+  field. Pulls take 88-225s, so seeding is a build-time cost measured in tens
+  of minutes — never in a judge's path.
 - **All four Nemotron models are served**, Ultra included, so routing is a real
   three-tier funnel. `chat_template_kwargs` reasoning control works. Exact IDs,
   prices and the 200K/min throughput ceiling are in spec §10.
@@ -54,10 +64,10 @@ missing entitlement and is not one. Set both env vars.
 |---|---|---|
 | R1 | venv built with `py -3.13`; `requires-python` stays `>=3.12`. The machine's default `python` is 3.10.6, below the floor. | Recreate the venv |
 | R2 | `SandboxRunner` is `@runtime_checkable`. **Caveat: that checks method *names* only** — a signature divergence passed its test undetected (see I2 below). | Treat the adapter's protocol test as a smoke check, not conformance |
-| R3 | Live spike deferred — no API key was visible to the executing session. | The go/no-go answer is still unknown |
+| R3 | Live spike deferred — no API key was visible to the executing session. | ~~Unknown~~ — since run, and it is a GO |
 | R4 | SDD helper scripts replicated by hand; the worktree sandbox refused to execute them. | None to the product |
 | R5 | `.gitignore`: scoped `coverage.json` to `/coverage.json` (the bare pattern matches at any depth and would have silently ignored `tests/fixtures/coverage.json`), and ignored the tooling scratch dirs. | None — verified |
-| R6 | `contree-sdk` not installed; the lazy import means tests pass without it. | The SDK surface stays unverified — see item 3 above |
+| R6 | `contree-sdk` not installed; the lazy import means tests pass without it. | **This cost was real.** The unverified surface hid three defects in the adapter until the extra was installed and introspected |
 | R7 | The `pr.diff` fixture's hunk **headers** were wrong, not its bodies. Corrected the headers and restored the two-line guard-clause deletion, which an earlier repair had mutilated into invalid Python. | The fixture would stop representing a guard-clause deletion |
 | R8 | `tests_for_hunk` renamed to `covering_tests`. pytest's default `python_functions` glob is `test*`, so a public function starting with `test` gets collected as a test case the moment a test module imports it. | None — mechanical |
 
@@ -100,7 +110,10 @@ sites exist — and it likely needs a timeout and an explicit error verdict too.
 from running the baseline under xdist, where dynamic contexts are unreliable and
 degrade silently to "uncovered". It also does not set `relative_files`, so a
 capture whose cwd is not the repo root emits keys like `/testbed/widgets/x.py`
-that `normalise_path` cannot fix. Consider `-o addopts=` and a coverage config.
+that `normalise_path` cannot fix. **Confirmed, not hypothetical:** the probed
+SWE-rebench images check the repository out at `/testbed`, so captures will
+carry exactly that prefix unless `relative_files` is set. Consider
+`-o addopts=` and a coverage config.
 
 **I6 — the spec's mandated golden test does not exist.** Spec §6 and §13.1 both
 require a dedicated merge-base line-mapping test against a recorded fixture from

@@ -595,9 +595,20 @@ for CPU and I/O in ways a sleep does not.
 
 **Load-bearing unverified facts, to confirm in week one:**
 
-- The ~7,500 prebuilt SWE-rebench images are pullable. This claim comes from a
-  HuggingFace discussion thread, not formal docs, and it mitigates the project's
-  largest risk. Verify two or three specific pulls.
+- ~~The ~7,500 prebuilt SWE-rebench images are pullable.~~ **RESOLVED
+  2026-09-18 by `scripts/probe_images.py`: 4/4 candidates pulled, each with a
+  repository checked out at `/testbed` and a working interpreter.** The images
+  live on Docker Hub under `swerebench/`, named
+  `sweb.eval.x86_64.<owner>_<pr>_<repo>-<n>`, and the reference for any instance
+  is in the `docker_image` field of the SWE-rebench dataset on HuggingFace.
+  The curated-seed scoping decision holds.
+
+  **Pulls are slow: 88s–225s each, median ~114s.** That is a *build-time* cost
+  and must never appear in a judge's path — which is a second, independent
+  argument for the curated-seed scoping in §3, beyond environment reliability.
+  Ten seeds is 20–40 minutes of one-time setup. Do it well before the October 30
+  deadline, tag every resulting checkpoint (untagged images can be collected,
+  and judging runs six weeks later), and re-verify the tags in late November.
 - ~~Sandboxes have network egress to `api.tokenfactory.nebius.com`.~~
   **RESOLVED 2026-09-18 by `scripts/smoke_sandbox.py`: they do.** DNS resolves
   inside a sandbox (`195.242.11.3`) and TCP:443 connects. Model calls from
