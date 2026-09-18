@@ -1,0 +1,20 @@
+{
+  "files": {
+    "widgets/users.py": {
+      "contexts": {
+        "1": ["tests/test_users.py::test_get_user|run"],
+        "2": [
+          "tests/test_users.py::test_get_user|run",
+          "tests/test_users.py::test_rejects_blank|run"
+        ],
+        "8": [""],
+        "9": ["tests/test_users.py::test_list_users|run"]
+      }
+    },
+    "widgets\\billing.py": {
+      "contexts": {
+        "4": ["tests/test_billing.py::test_charge|run"]
+      }
+    }
+  }
+}

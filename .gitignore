@@ -10,9 +10,13 @@ build/
 *.egg-info/
 .pytest_cache/
 .coverage
-coverage.json
+/coverage.json
 htmlcov/
 *.db
 *.sqlite3
 .DS_Store
+
+# Tooling scratch
 .worktrees/
+.claude/
+.superpowers/
