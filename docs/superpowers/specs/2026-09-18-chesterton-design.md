@@ -352,8 +352,16 @@ these exactly, and do not infer any of them from a third-party catalogue.
 
 **Nemotron Ultra is available**, contrary to the earlier assumption in this
 document, so the routing is a genuine three-tier funnel rather than a degraded
-Nano → Super → Super. Ultra's 1M context is enough to hold every mutant result
-from a run at once, which is what makes a single synthesis call viable.
+Nano → Super → Super.
+
+**Throughput, not context, is the binding limit on the synthesis call.** Ultra
+is `$1.00/1M` input and `$3.00/1M` output, served fp4 from `us-central1` only,
+with `tools` and `reasoning` both supported — and a per-request ceiling of
+**200,000 tokens/minute and 300 requests/minute**. Its context window is
+1,048,576, so the window and the throughput budget are off by roughly 5×: a
+full-context call would spend five minutes of allowance. Size the synthesis
+prompt against the 200K/min ceiling, not the context window. Pre-summarise
+mutant results on the execution tier rather than shipping raw logs to Ultra.
 
 **Lightning over Nano for the execution tier.** Both are cheap; Lightning is
 newer, carries a 1M context against Nano's 262K, and is built for the
@@ -532,11 +540,12 @@ set.
 - Nebius passes `chat_template_kwargs` through to Nemotron, so reasoning-budget
   control works.
 - ~~Nemotron Super responds on the account's key.~~ **RESOLVED 2026-09-18:**
-  all four Nemotron models are served and their exact IDs are recorded in §10.
-  Ultra is available, so the routing is a real three-tier funnel. Still
-  unverified: per-token *prices* (the `/v1/models` fields were not inspected),
-  and whether any model actually *responds* to a completion — listing is not
-  the same as serving.
+  all four Nemotron models are served, with exact IDs, prices and per-request
+  limits recorded in §10. Ultra is available, so the routing is a real
+  three-tier funnel. Ultra declares `tools` and `reasoning` support. Still
+  unverified: whether any model actually *responds* to a completion — listing
+  is not the same as serving — and whether Nebius honours `chat_template_kwargs`
+  for reasoning-budget control.
 - **Content-hash checkpoint deduplication is NOT documented.** Earlier
   reporting claimed identical filesystem state yields the identical UUID.
   Verify empirically before relying on it, and never claim it on camera
