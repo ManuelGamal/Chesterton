@@ -560,12 +560,38 @@ In priority order:
 
 ## 15. Risks
 
-**Week-one go/no-go spike.** The architecture assumes forking a warm checkpoint
-24 ways completes fast enough to feel live. This is unmeasured. Build a
-checkpoint from a real prebuilt image, fork it 24 ways with `asyncio.gather`,
-and time it. If fan-out takes minutes rather than seconds, the design collapses
-toward the precompute-only fallback and is redesigned around a smaller finding
-set.
+**Week-one go/no-go spike — MEASURED 2026-09-18. VERDICT: GO.**
+
+`scripts/spike_fanout.py python:3.12-slim "sleep 2" 3` — 24-way fan-out from a
+tagged checkpoint, three rounds, each fork doing a known 2s of work.
+
+| | |
+|---|---|
+| baseline build (one-time, cached) | **3.3s** |
+| worst-case wall clock, 24 forks | **4.1s** |
+| median individual fork | **3.48s** |
+| round-to-round spread | **0.2s** |
+| outcomes | **72/72 ran**, 0 command failures, 0 infrastructure errors |
+
+Two derived facts the design should be planned against:
+
+**Per-fork overhead is ~1.5s** (3.48s median minus the 2s of known work). So a
+fan-out costs roughly *slowest-selected-test-duration + 1.5s*, not the sum of
+its parts. A mutant whose selected tests take 5s lands around 6.5s — an order
+of magnitude inside the 20s target.
+
+**Parallelism is real, at ~85% efficiency.** Serialised, 24 × 3.48s would be
+83s; actual wall was 4.1s, a ~20× speedup across 24 slots. The forks genuinely
+run side by side rather than queueing, which is the assumption the entire
+fan-out architecture rests on.
+
+The 0.2s spread over three rounds matters as much as the speed: a live demo
+needs the *worst* case to be fast, not the median.
+
+Measured with a synthetic `sleep` rather than a real suite, deliberately — a
+fixed known duration makes the parallelism ratio readable. Re-measure against a
+real repository once a prebuilt image is confirmed, since test suites contend
+for CPU and I/O in ways a sleep does not.
 
 **Load-bearing unverified facts, to confirm in week one:**
 
