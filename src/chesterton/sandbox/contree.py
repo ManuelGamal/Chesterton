@@ -64,7 +64,18 @@ class ConTreeSandboxRunner:
         if ref.startswith("docker://"):
             image = await sdk.images.oci(ref)
         else:
-            image = await sdk.images.use(ref)
+            # strict=True forces a real resolution. Without it `use()` returns
+            # a LAZY handle whose .uuid is None — and str(None) is the truthy
+            # string "None", which sails past any caller that merely checks
+            # for a non-empty id. Fail here instead, where the cause is legible.
+            image = await sdk.images.use(ref, strict=True)
+
+        if image.uuid is None:
+            raise RuntimeError(
+                f"image {ref!r} did not resolve to a checkpoint id — the handle "
+                "came back unresolved, which usually means the reference is "
+                "wrong or the account cannot read it."
+            )
         # .uuid is a uuid.UUID; the protocol promises a str.
         return str(image.uuid)
 

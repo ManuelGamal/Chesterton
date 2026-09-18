@@ -52,7 +52,12 @@ async def main(image_ref: str) -> int:
     print(f"\n1. Resolving {image_ref!r} ...")
     try:
         base = await runner.use_image(image_ref)
-        record("image resolves", bool(base), f"checkpoint {base}")
+        # bool(base) is not enough: an unresolved lazy handle stringifies to
+        # "None", which is truthy. Demand something that looks like a real id.
+        looks_real = bool(base) and base not in {"None", "none"} and len(base) > 8
+        record("image resolves", looks_real, f"checkpoint {base!r}")
+        if not looks_real:
+            return summarise()
     except Exception as exc:
         record("image resolves", False, f"{type(exc).__name__}: {exc}")
         return summarise()
@@ -157,8 +162,11 @@ def summarise() -> int:
             "work until this does. Check the key and the /sandboxes base URL."
         ),
         "command executes": (
-            "The SDK connects but cannot run anything. Compare against the "
-            "surface pinned in tests/test_sandbox_contree.py."
+            "The SDK connects but cannot run anything. If the error is "
+            "ForbiddenError, the key authenticates but is NOT authorised for "
+            "Sandboxes — it is a separate beta entitlement from inference. "
+            "Request access via the Token Factory console or contree@nebius.com "
+            "before anything else; no amount of code fixes this."
         ),
         "checkpoint persists with a new id": (
             "disposable=False is not producing a reusable checkpoint. The entire "
