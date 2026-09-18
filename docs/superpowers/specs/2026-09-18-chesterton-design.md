@@ -339,14 +339,30 @@ artifact is the JiTTest of §2.
 
 ## 10. Model routing
 
-| Tier | Role | Volume |
-|---|---|---|
-| Nemotron Nano | semantic mutant generation, log triage | thousands of calls |
-| Nemotron Super | survivor classification, review synthesis | tens of calls |
+**Model IDs confirmed live on Token Factory (2026-09-18, via
+`GET /v1/models?verbose=true`).** Casing is inconsistent between them — copy
+these exactly, and do not infer any of them from a third-party catalogue.
 
-**Nemotron Ultra is not assumed.** Its availability on Token Factory is
-unconfirmed. The architecture is Nano → Super → Super; if Ultra is live it
-takes the final write-up, but nothing depends on it.
+| Tier | Model ID | Context | Role | Volume |
+|---|---|---|---|---|
+| execution | `nvidia/Nemotron-3_5-Lightning` | 1,048,576 | semantic mutant generation, log triage | thousands of calls |
+| fallback | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` | 262,144 | same, if Lightning underperforms | thousands of calls |
+| reasoning | `nvidia/nemotron-3-super-120b-a12b` | 262,144 | survivor classification | tens of calls |
+| synthesis | `nvidia/Nemotron-3-Ultra-550b-a55b` | 1,048,576 | review write-up, regression-test generation | one or two calls |
+
+**Nemotron Ultra is available**, contrary to the earlier assumption in this
+document, so the routing is a genuine three-tier funnel rather than a degraded
+Nano → Super → Super. Ultra's 1M context is enough to hold every mutant result
+from a run at once, which is what makes a single synthesis call viable.
+
+**Lightning over Nano for the execution tier.** Both are cheap; Lightning is
+newer, carries a 1M context against Nano's 262K, and is built for the
+high-volume always-on case this tier is. Nano stays as the fallback if
+measurement disagrees. Pick between them on measured latency and output
+quality, not on the reasoning here.
+
+**Nemotron 3 Nano Omni is NOT served** — it does not appear in the live model
+list. Nothing in this design needs it.
 
 Routing is made **legible** in the UI via a live counter: "412 Nano calls ·
 9 Super · $0.04 · 24 sandboxes forked from 1 checkpoint." Judges reward smart
@@ -515,7 +531,12 @@ set.
   an open community issue asks exactly this).
 - Nebius passes `chat_template_kwargs` through to Nemotron, so reasoning-budget
   control works.
-- Nemotron Super responds on the account's key.
+- ~~Nemotron Super responds on the account's key.~~ **RESOLVED 2026-09-18:**
+  all four Nemotron models are served and their exact IDs are recorded in §10.
+  Ultra is available, so the routing is a real three-tier funnel. Still
+  unverified: per-token *prices* (the `/v1/models` fields were not inspected),
+  and whether any model actually *responds* to a completion — listing is not
+  the same as serving.
 - **Content-hash checkpoint deduplication is NOT documented.** Earlier
   reporting claimed identical filesystem state yields the identical UUID.
   Verify empirically before relying on it, and never claim it on camera
