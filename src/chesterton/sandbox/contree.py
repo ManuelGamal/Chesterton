@@ -26,21 +26,52 @@ though `run` is not itself a coroutine function.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 
 from chesterton.sandbox.protocol import RunResult
 
-DEFAULT_BASE_URL = "https://api.tokenfactory.nebius.com/sandboxes"
+#: Trailing slash matches ContreeEndpoint.TOKEN_FACTORY_SANDBOXES.
+DEFAULT_BASE_URL = "https://api.tokenfactory.nebius.com/sandboxes/"
+
+#: The SDK's own sentinels. `Auth.resolve()` substitutes a field whose value
+#: names an environment variable, and keeps any other value as a literal — so
+#: these round-trip to the real credentials when the env vars are set.
+_ENV_TOKEN = "NEBIUS_API_KEY"
+_ENV_PROJECT = "NEBIUS_PROJECT_ID"
 
 _MISSING_SDK = (
     "contree-sdk is not installed. Install the sandbox extra with "
     'pip install -e ".[sandbox]" before using ConTreeSandboxRunner.'
 )
 
+_MISSING_PROJECT = (
+    "No Nebius project id. Sandboxes authorises on a Project header as well as "
+    "a bearer token, and a request without one is rejected as ForbiddenError — "
+    "which looks like a permissions problem but is a configuration one. Set "
+    f"{_ENV_PROJECT}, or pass project_id=..., using the id from "
+    "https://tokenfactory.nebius.com/project/api-keys"
+)
+
 
 class ConTreeSandboxRunner:
-    def __init__(self, api_key: str, base_url: str = DEFAULT_BASE_URL) -> None:
-        self.api_key = api_key
+    """Sandboxes needs BOTH a bearer token and a project id.
+
+    Inference on Token Factory needs only the key, so a key that works fine for
+    `/v1/chat/completions` still fails here. The failure is a bare 403 with no
+    hint about the missing project, so this class checks for it up front.
+    """
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        base_url: str = DEFAULT_BASE_URL,
+        project_id: str | None = None,
+    ) -> None:
+        # Falling back to the sentinel names lets the SDK resolve both from the
+        # environment, which is the path the official quickstart documents.
+        self.api_key = api_key or _ENV_TOKEN
+        self.project_id = project_id or _ENV_PROJECT
         self.base_url = base_url
         self._sdk = None
 
@@ -53,10 +84,23 @@ class ConTreeSandboxRunner:
         if self._sdk is None:
             try:
                 from contree_sdk import Contree
+                from contree_sdk.auth import IAMAuth
+                from contree_sdk.config import ContreeConfig
             except ImportError as exc:  # fail loudly, at first use, with a fix
                 raise RuntimeError(_MISSING_SDK) from exc
 
-            self._sdk = Contree(base_url=self.base_url, token=self.api_key)
+            if self.project_id == _ENV_PROJECT and not os.environ.get(_ENV_PROJECT):
+                raise RuntimeError(_MISSING_PROJECT)
+
+            # Built explicitly rather than via Contree(base_url=, token=),
+            # because that constructor exposes no project_id and the default
+            # would go out as the literal string "NEBIUS_PROJECT_ID".
+            auth = IAMAuth(
+                token=self.api_key,
+                project_id=self.project_id,
+                base_url=self.base_url,
+            )
+            self._sdk = Contree(ContreeConfig(auth=auth))
         return self._sdk
 
     async def use_image(self, ref: str) -> str:

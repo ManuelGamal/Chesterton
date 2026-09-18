@@ -41,10 +41,22 @@ def record(name: str, ok: bool, detail: str = "") -> bool:
 
 
 async def main(image_ref: str) -> int:
-    if not os.environ.get("NEBIUS_API_KEY"):
-        sys.exit("NEBIUS_API_KEY is not set.")
+    missing = [
+        name
+        for name in ("NEBIUS_API_KEY", "NEBIUS_PROJECT_ID")
+        if not os.environ.get(name)
+    ]
+    if missing:
+        sys.exit(
+            f"Not set: {', '.join(missing)}.\n"
+            "Sandboxes needs BOTH — it authorises on a Project header as well "
+            "as a bearer token, and a request missing the project is rejected "
+            "as ForbiddenError, which looks like a permissions problem but is "
+            "not. Both values are at "
+            "https://tokenfactory.nebius.com/project/api-keys"
+        )
 
-    runner = ConTreeSandboxRunner(os.environ["NEBIUS_API_KEY"])
+    runner = ConTreeSandboxRunner()  # credentials resolve from the environment
     started = time.perf_counter()
 
     # 1. Resolve an image. Proves auth, base URL, and the client construction

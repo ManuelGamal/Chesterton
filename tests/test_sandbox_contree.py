@@ -26,8 +26,9 @@ def test_the_async_methods_are_actually_coroutines():
 
 
 def test_defaults_to_the_documented_sandboxes_base_url():
+    # Trailing slash matches the SDK's own ContreeEndpoint default.
     runner = ConTreeSandboxRunner(api_key="unused")
-    assert runner.base_url == "https://api.tokenfactory.nebius.com/sandboxes"
+    assert runner.base_url == "https://api.tokenfactory.nebius.com/sandboxes/"
 
 
 async def test_missing_sdk_raises_an_actionable_error(monkeypatch):
@@ -87,8 +88,24 @@ def test_the_sdk_surface_this_adapter_depends_on_actually_exists():
 def test_the_adapter_builds_a_real_client_without_network_or_credentials():
     pytest.importorskip("contree_sdk", reason="sandbox extra not installed")
 
-    runner = ConTreeSandboxRunner(api_key="unused")
+    runner = ConTreeSandboxRunner(api_key="unused", project_id="project-unused")
     sdk = runner._handle()
 
     assert sdk is not None
     assert runner._handle() is sdk  # built once, cached
+
+
+def test_a_missing_project_id_fails_with_a_legible_error(monkeypatch):
+    """Sandboxes authorises on a Project header as well as a bearer token.
+
+    Without one the API returns a bare ForbiddenError, which reads as "your
+    account lacks permission" when the real cause is "you sent no project".
+    That misdiagnosis cost real time, so the adapter refuses up front.
+    """
+    pytest.importorskip("contree_sdk", reason="sandbox extra not installed")
+    monkeypatch.delenv("NEBIUS_PROJECT_ID", raising=False)
+
+    runner = ConTreeSandboxRunner(api_key="unused")
+
+    with pytest.raises(RuntimeError, match="NEBIUS_PROJECT_ID"):
+        runner._handle()
