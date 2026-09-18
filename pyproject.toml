@@ -7,6 +7,7 @@ dependencies = [
     "unidiff>=0.7.5",
     "libcst>=1.4",
     "coverage>=7.6",
+    "openai>=1.40",
 ]
 
 [project.optional-dependencies]
