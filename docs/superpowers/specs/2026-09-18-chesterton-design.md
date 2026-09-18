@@ -572,8 +572,30 @@ set.
 - The ~7,500 prebuilt SWE-rebench images are pullable. This claim comes from a
   HuggingFace discussion thread, not formal docs, and it mitigates the project's
   largest risk. Verify two or three specific pulls.
-- Sandboxes have network egress to `api.tokenfactory.nebius.com` (undocumented;
-  an open community issue asks exactly this).
+- ~~Sandboxes have network egress to `api.tokenfactory.nebius.com`.~~
+  **RESOLVED 2026-09-18 by `scripts/smoke_sandbox.py`: they do.** DNS resolves
+  inside a sandbox (`195.242.11.3`) and TCP:443 connects. Model calls from
+  inside a sandbox are therefore possible — an option the design had assumed
+  away. Nothing in Phase 1 depends on it, but Phase 2's analysis tiers may.
+
+**Also verified live on 2026-09-18, all by the same smoke test:**
+
+- **Forks inherit parent filesystem state.** A tagged non-disposable run wrote
+  a sentinel file; two concurrent forks of that checkpoint both read it back.
+  This is the checkpoint-and-fork mechanic §4 rests on, and it works.
+- **Tagging works**, so checkpoints can be protected from garbage collection
+  across the six-week gap between submission and judging.
+- **`disposable=True` really does yield no reusable checkpoint**, matching the
+  Global Constraint the fake enforces offline.
+- **Eight sandbox operations, including two concurrent forks, in 5.7s total.**
+  Not the fan-out measurement — that is still §15's open item — but the first
+  real evidence that per-operation latency is small.
+
+**Sandboxes authorise on a `Project` header as well as a bearer token.** A key
+that works against `/v1/chat/completions` is rejected here with a bare
+`ForbiddenError` if `NEBIUS_PROJECT_ID` is unset. That error reads as a missing
+entitlement and is not one; `sandbox/contree.py` now refuses up front with a
+legible message instead.
 - ~~Nebius passes `chat_template_kwargs` through to Nemotron.~~
   **RESOLVED 2026-09-18:** it does. `enable_thinking: false` yields 0 reasoning
   tokens against 64 for the same prompt without it. See §10.
