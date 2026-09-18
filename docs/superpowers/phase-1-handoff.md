@@ -1,6 +1,6 @@
 # Phase 1 handoff
 
-**Completed:** 2026-09-18 · **Merged:** `112bfd2` · **Suite:** 54 passed, 0.17s, no network
+**Completed:** 2026-09-18 · **Merged:** `112bfd2` · **Suite:** 57 passed, 0.12s, no network
 
 Phase 1 built the offline-testable foundation: a sandbox abstraction behind a
 protocol, GitHub PR ingest with correct merge-base handling, diff parsing,
