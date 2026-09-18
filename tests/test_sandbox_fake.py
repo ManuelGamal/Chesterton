@@ -90,3 +90,35 @@ async def test_aclose_is_safe_to_call():
     runner = FakeSandboxRunner()
     await runner.aclose()
     await runner.aclose()
+
+
+async def test_the_fake_records_tag_and_timeout():
+    runner = FakeSandboxRunner()
+    base = await runner.use_image("python:3.13")
+
+    await runner.run(base, "pytest -q", tag="chesterton:base", timeout=30.0)
+
+    assert runner.options == [
+        {"disposable": True, "tag": "chesterton:base", "timeout": 30.0}
+    ]
+
+
+async def test_a_run_reports_a_duration():
+    runner = FakeSandboxRunner()
+    base = await runner.use_image("python:3.13")
+
+    result = await runner.run(base, "pytest -q")
+
+    assert result.duration_s is not None
+    assert result.duration_s >= 0.0
+
+
+async def test_a_scripted_result_keeps_its_own_duration():
+    runner = FakeSandboxRunner(
+        responses={"slow": RunResult("", "", 0, None, duration_s=12.5)}
+    )
+    base = await runner.use_image("python:3.13")
+
+    result = await runner.run(base, "slow")
+
+    assert result.duration_s == 12.5

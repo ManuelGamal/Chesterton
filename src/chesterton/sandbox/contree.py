@@ -131,6 +131,7 @@ class ConTreeSandboxRunner:
         files: Mapping[str, str] | None = None,
         disposable: bool = True,
         tag: str | None = None,
+        timeout: float | None = None,
     ) -> RunResult:
         sdk = self._handle()
         image = await sdk.images.use(checkpoint_id)
@@ -139,7 +140,16 @@ class ConTreeSandboxRunner:
             files=dict(files) if files else None,
             disposable=disposable,
             tag=tag,
+            timeout=timeout,
         )
+        # ContreeImage.elapsed reads .result.elapsed_time, and .result raises
+        # RuntimeError unless the run reached SUCCEEDED. Reading it on a failed
+        # run would turn a test failure into a crash.
+        duration_s: float | None = None
+        try:
+            duration_s = result.elapsed.total_seconds()
+        except Exception:
+            duration_s = None
         # A disposable run persists nothing, so there is no id to fork from.
         # Reporting result.uuid here would let offline code depend on
         # something the fake cannot honestly provide.
@@ -148,6 +158,7 @@ class ConTreeSandboxRunner:
             stderr=result.stderr,
             exit_code=result.exit_code,
             checkpoint_id=None if disposable else str(result.uuid),
+            duration_s=duration_s,
         )
 
     async def aclose(self) -> None:
