@@ -1,6 +1,6 @@
 from chesterton.defended import (
     defended_hunks,
-    tests_for_hunk,
+    covering_tests,
     uncovered_findings,
 )
 from chesterton.models import Hunk
@@ -60,10 +60,10 @@ def test_tier_zero_findings_are_reported_per_line_not_per_hunk():
 
 def test_tests_are_selected_per_hunk_not_unioned_across_hunks():
     # Each mutant targets ONE hunk and must run only that hunk's tests.
-    assert tests_for_hunk(Hunk("users.py", 2, 2), COVMAP) == [
+    assert covering_tests(Hunk("users.py", 2, 2), COVMAP) == [
         "tests/test_users.py::test_get_user"
     ]
-    assert tests_for_hunk(Hunk("users.py", 3, 3), COVMAP) == [
+    assert covering_tests(Hunk("users.py", 3, 3), COVMAP) == [
         "tests/test_users.py::test_blank",
         "tests/test_users.py::test_get_user",
     ]

@@ -52,7 +52,7 @@ def defended_hunks(
     return [_defence(hunk, covmap) for hunk in hunks]
 
 
-def tests_for_hunk(hunk: Hunk, covmap: CoverageMap) -> list[str]:
+def covering_tests(hunk: Hunk, covmap: CoverageMap) -> list[str]:
     """The tests one mutant of this hunk must run. Never a cross-hunk union."""
     return _defence(hunk, covmap).tests
 
