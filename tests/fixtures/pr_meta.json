@@ -1,0 +1,9 @@
+{
+  "number": 42,
+  "title": "Speed up user lookup",
+  "base": {
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "repo": {"clone_url": "https://github.com/acme/widgets.git"}
+  },
+  "head": {"sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+}
