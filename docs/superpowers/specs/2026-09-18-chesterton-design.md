@@ -588,10 +588,30 @@ fan-out architecture rests on.
 The 0.2s spread over three rounds matters as much as the speed: a live demo
 needs the *worst* case to be fast, not the median.
 
-Measured with a synthetic `sleep` rather than a real suite, deliberately — a
-fixed known duration makes the parallelism ratio readable. Re-measure against a
-real repository once a prebuilt image is confirmed, since test suites contend
-for CPU and I/O in ways a sleep does not.
+### Re-measured against a real suite (2026-09-18)
+
+`spike_fanout.py docker://swerebench/…nomenclature-284 "python -m pytest -q -x" 3`
+— a real prebuilt image running a real pytest invocation in every fork.
+
+| | synthetic `sleep 2` | real `pytest` |
+|---|---|---|
+| baseline build | 3.3s | **1.2s** (image already cached) |
+| worst-case wall, 24 forks | 4.1s | **4.7s** |
+| median individual fork | 3.48s | **1.75s** |
+| round-to-round spread | 0.2s | **1.5s** |
+| outcomes | 72/72 | **72/72**, 0 failures, 0 errors |
+
+**The 20s target holds with real work: 4.7s worst case.** The spread widening
+from 0.2s to 1.5s is the expected signature of real CPU and I/O contention —
+worth knowing, and still far inside budget.
+
+**Two honest caveats.** `-x` stops at the first failure, and a SWE-bench image
+sits at the pre-fix commit, so some forks likely exited early rather than
+running a suite to completion — this measures fork plus interpreter start plus
+*partial* execution, not a full green suite. And a real mutant run executes
+coverage-selected tests against a *patched* tree, which may run longer. The
+fork mechanics are proven; the per-mutant duration is not yet pinned. Re-measure
+once the seed pipeline produces a genuinely green baseline.
 
 **Load-bearing unverified facts, to confirm in week one:**
 
