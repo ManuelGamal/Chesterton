@@ -110,8 +110,13 @@ def screen_script(
         f"{apply} {ORIGINAL} || {{ echo CHESTERTON_APPLY=original; exit 0; }}",
         f"{py} -m pytest -q -p no:cacheprovider {selector(original_f2p, list(original_files))} "
         "> /tmp/original.txt 2>&1; echo CHESTERTON_ORIGINAL=$?",
-        f"{apply} -R {ORIGINAL} || {{ echo CHESTERTON_APPLY=revert; exit 0; }}",
-        f"{apply} {AUGMENTED} || {{ echo CHESTERTON_APPLY=augmented; exit 0; }}",
+        # UTBoost's test patch is written against different starting points
+        # per task: for some it replaces the original tests (apply from base,
+        # so revert first), for others it extends them (apply on top). Live
+        # 2026-09-20, assuming the first excluded every seaborn, requests and
+        # pylint-5859 patch, each with ORIGINAL=0. Try on top, then reverted.
+        f"{apply} {AUGMENTED} 2>&1 || {{ {apply} -R {ORIGINAL} 2>&1 && "
+        f"{apply} {AUGMENTED} 2>&1; }} || {{ echo CHESTERTON_APPLY=augmented; exit 0; }}",
         f"{py} -m pytest -q -p no:cacheprovider {selector(augmented_f2p, list(augmented_files))} "
         "> /tmp/augmented.txt 2>&1; echo CHESTERTON_AUGMENTED=$?",
         "echo '--- augmented tail'; tail -n 15 /tmp/augmented.txt",
