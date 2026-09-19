@@ -24,3 +24,6 @@ htmlcov/
 # Seed records and run reports name account-specific checkpoints
 /seeds/
 /runs/
+
+# Agent patches from SWE-bench/experiments: that repository states no license
+/agent_patches/

@@ -33,6 +33,15 @@ async def _fetch_from_github(url: str):
         return await fetch_pull_request(owner, repo, number, client=http)
 
 
+async def _fetch_swebench(instance_id: str):
+    import httpx
+
+    from chesterton.github.swebench import fetch_swebench_task
+
+    async with httpx.AsyncClient(timeout=60) as http:
+        return await fetch_swebench_task(instance_id, client=http)
+
+
 def _default_runner():
     from chesterton.sandbox.contree import ConTreeSandboxRunner
 
@@ -50,8 +59,26 @@ def build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
 
     seed = commands.add_parser("seed", help="build a seed checkpoint for a PR")
-    seed.add_argument("--pr", required=True, help="GitHub pull request URL")
-    seed.add_argument("--image", required=True, help="image ref, e.g. docker://...")
+    source = seed.add_mutually_exclusive_group(required=True)
+    source.add_argument("--pr", help="GitHub pull request URL")
+    source.add_argument(
+        "--swebench",
+        metavar="INSTANCE_ID",
+        help="a SWE-bench task, e.g. pydata__xarray-7393: its gold patch plus "
+        "its original test_patch, its image and its test files by default",
+    )
+    seed.add_argument(
+        "--patch",
+        type=Path,
+        metavar="FILE",
+        help="with --swebench: review this patch (e.g. an agent's) instead of "
+        "the gold patch; the task's original tests stay the oracle",
+    )
+    seed.add_argument(
+        "--image",
+        help="image ref, e.g. docker://...; required with --pr, defaults to "
+        "SWE-bench's own image with --swebench",
+    )
     seed.add_argument("--slug", required=True, help="lowercase letters, digits, hyphens")
     seed.add_argument(
         "--python",
@@ -59,6 +86,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="interpreter the repository's tests run under; in SWE-rebench "
         "images this is /opt/conda/envs/testbed/bin/python, not the `python` "
         "on PATH (find it with scripts/probe_interpreter.py)",
+    )
+    seed.add_argument(
+        "--tests",
+        nargs="+",
+        default=[],
+        metavar="PATH",
+        help="scope the baseline and every run to these test files; the "
+        "whole suite if omitted",
     )
     seed.add_argument("--out", required=True, type=Path)
 
@@ -108,12 +143,35 @@ def _summarise(report: RunReport) -> str:
     return "\n".join(lines)
 
 
-async def _seed(args, runner_factory, fetch) -> int:
-    pr = await fetch(args.pr)
+async def _seed(args, runner_factory, fetch, fetch_swebench) -> int:
+    if args.swebench:
+        from chesterton.github.swebench import SWEBenchError, with_patch
+
+        try:
+            task = await fetch_swebench(args.swebench)
+        except SWEBenchError as exc:
+            print(f"could not fetch {args.swebench}: {exc}", file=sys.stderr)
+            return 1
+        if args.patch:
+            try:
+                task = with_patch(
+                    task, args.patch.read_text(encoding="utf-8"), label=args.patch.stem
+                )
+            except (OSError, ValueError) as exc:
+                print(f"cannot review {args.patch}: {exc}", file=sys.stderr)
+                return 1
+        pr = task.pr
+        image = args.image or task.image
+        # SWE-bench's own scope unless overridden: the test_patch's files.
+        scope = args.tests or list(task.test_paths)
+    else:
+        pr, image, scope = await fetch(args.pr), args.image, args.tests
+
     runner = runner_factory()
     try:
         seed = await build_seed(
-            runner, pr, slug=args.slug, image_ref=args.image, python=args.python
+            runner, pr, slug=args.slug, image_ref=image,
+            python=args.python, test_paths=scope,
         )
     except SeedBuildError as exc:
         print(f"seed build failed: {exc}", file=sys.stderr)
@@ -126,10 +184,18 @@ async def _seed(args, runner_factory, fetch) -> int:
         f"{seed.checkpoint_tag}; {len(seed.selectable)} selectable, "
         f"{len(seed.flaky)} flaky, {len(seed.failing)} failing tests -> {args.out}"
     )
+    print(f"  scope: {', '.join(seed.test_paths) or 'the whole suite'}")
     return 0
 
 
 async def _run(args, runner_factory, client_factory) -> int:
+    if not args.seed.is_file():
+        # A failed seed build writes nothing; say so instead of a traceback.
+        print(
+            f"no seed at {args.seed}; build it first with `chesterton seed`",
+            file=sys.stderr,
+        )
+        return 1
     seed = SeedRecord.from_json(args.seed.read_text(encoding="utf-8"))
     runner = runner_factory()
     client = None if args.no_llm else client_factory()
@@ -148,11 +214,26 @@ async def _run(args, runner_factory, client_factory) -> int:
     return 0
 
 
-def main(argv=None, *, runner_factory=None, client_factory=None, fetch=None) -> int:
-    args = build_parser().parse_args(argv)
+def main(
+    argv=None, *, runner_factory=None, client_factory=None, fetch=None,
+    fetch_swebench=None,
+) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
     runner_factory = runner_factory or _default_runner
     if args.command == "seed":
-        return asyncio.run(_seed(args, runner_factory, fetch or _fetch_from_github))
+        if args.pr and not args.image:
+            parser.error("--image is required with --pr")
+        if args.patch and not args.swebench:
+            parser.error("--patch needs --swebench: only a SWE-bench task has "
+                         "separate original tests to keep as the oracle")
+        return asyncio.run(
+            _seed(
+                args, runner_factory,
+                fetch or _fetch_from_github,
+                fetch_swebench or _fetch_swebench,
+            )
+        )
     return asyncio.run(_run(args, runner_factory, client_factory or _default_client))
 
 
