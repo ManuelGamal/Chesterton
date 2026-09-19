@@ -681,11 +681,17 @@ single moment and random search cannot substitute for it on camera.
 `IAMconsortium/nomenclature` @ `a0408e52fc6b2402c448c174802c16441326b80c`,
 source tree only — is **77/256 functions = 30%**, the top of the estimate above
 and well clear of the ~10% floor. `scripts/probe_crosshair.py` reproduces it.
-The ceiling is set by annotation discipline, not purity: of the 179 ineligible,
-90 take no arguments, 52 have unannotated arguments, 28 lack a return
-annotation, and only 9 were rejected for an impure call. This codebase scores
-45/71 = 63% and is not representative — we annotate more heavily than the seeds
-do.
+Of the 179 ineligible, 90 take no arguments, 52 have unannotated arguments and
+28 lack a return annotation. Those three are exact AST facts and account for
+the bulk of the ceiling. **The purity figure is not a fact and must not be
+quoted.** Only 9 functions were rejected as impure, but the probe tests a
+six-name heuristic against the root of a call: it reports `self.session.get(url)`,
+`p.read_text()`, `os.environ[name]` and `x + time.time()` as *eligible*. The
+impurity screen therefore **overstates** eligibility, unlike the probe's other
+gaps, which all undercount. Read 30% strictly as an upper bound: 170 of 256
+functions are disqualified on annotations alone, and some unknown share of the
+remaining 86 is impure. This codebase scores 45/71 = 63% and is not
+representative — we annotate more heavily than the seeds do.
 
 Eligibility is a ceiling, not a hit rate. But the acceptance bar is also met in
 principle: `crosshair diffbehavior` on Python 3.13.14 distinguished
