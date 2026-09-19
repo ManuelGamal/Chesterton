@@ -178,6 +178,34 @@ def test_scoped_test_paths_reach_every_baseline_run():
         assert "xarray/tests/test_indexes.py xarray/tests/test_dataarray.py" in run
 
 
+def test_the_coverage_export_is_limited_to_the_changed_sources():
+    # Live, matplotlib-23314 (2026-09-19): exporting per-test contexts for all
+    # of matplotlib was OOM-killed. Only the changed files are ever read.
+    script = build_script(
+        "/testbed", "python -m pytest",
+        coverage_include=("lib/a.py", "lib/b.py"),
+    )
+
+    assert "coverage json --show-contexts -o /chesterton/coverage.json --include=lib/a.py,lib/b.py" in script
+
+
+def test_a_failed_export_does_not_claim_the_data_was_empty():
+    # It said "coverage recorded no data" when the export had been KILLED.
+    script = build_script("/testbed", "python -m pytest")
+
+    assert "recorded no data" not in script
+    assert "coverage export failed" in script
+
+
+async def test_the_build_exports_coverage_for_changed_sources_only(demo_seed):
+    runner = a_built_runner()
+
+    await a_seed_from(runner, demo_seed)
+
+    [(_, shell)] = runner.calls
+    assert "--include=pay.py" in shell  # not README.md: it is not source
+
+
 def test_an_unscoped_build_runs_the_whole_suite_as_before():
     script = build_script("/testbed", "python -m pytest")
     assert "test_indexes" not in script

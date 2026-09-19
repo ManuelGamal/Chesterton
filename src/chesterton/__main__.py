@@ -174,6 +174,13 @@ async def _seed(args, runner_factory, fetch, fetch_swebench) -> int:
 
 
 async def _run(args, runner_factory, client_factory) -> int:
+    if not args.seed.is_file():
+        # A failed seed build writes nothing; say so instead of a traceback.
+        print(
+            f"no seed at {args.seed}; build it first with `chesterton seed`",
+            file=sys.stderr,
+        )
+        return 1
     seed = SeedRecord.from_json(args.seed.read_text(encoding="utf-8"))
     runner = runner_factory()
     client = None if args.no_llm else client_factory()

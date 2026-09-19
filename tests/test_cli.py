@@ -171,6 +171,20 @@ def test_run_writes_a_report_and_names_the_undefended_surface(tmp_path, demo_see
     assert "equivalent" not in printed.lower()
 
 
+def test_running_a_seed_that_does_not_exist_is_a_one_line_error(tmp_path, capsys):
+    # Live 2026-09-19: a failed seed build left no file, and `run` answered
+    # with a FileNotFoundError traceback.
+    code = main(
+        ["run", str(tmp_path / "missing.json"), "--out", str(tmp_path / "r.json")],
+        runner_factory=FakeSandboxRunner,
+    )
+
+    assert code == 1
+    err = capsys.readouterr().err
+    assert "no seed at" in err
+    assert "Traceback" not in err
+
+
 def test_a_refused_run_exits_2_with_the_reason(tmp_path, demo_seed, capsys):
     seed_path = tmp_path / "demo.json"
     seed_path.write_text(demo_seed.to_json(), encoding="utf-8")

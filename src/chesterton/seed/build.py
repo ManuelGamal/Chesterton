@@ -72,9 +72,14 @@ def build_script(
     test_command: str,
     python: str = DEFAULT_PYTHON,
     test_paths: Sequence[str] = (),
+    coverage_include: Sequence[str] = (),
 ) -> str:
     q = shlex.quote
     py = q(python)
+    # Only the changed sources are ever read back. Live on matplotlib-23314
+    # (2026-09-19), exporting per-test contexts for the whole package was
+    # OOM-killed after a clean 864-test run.
+    include = f" --include={q(','.join(coverage_include))}" if coverage_include else ""
     # The same scope on every run, so the three runs are comparable and the
     # coverage map covers exactly what run time will select from.
     pytest = f"{test_command} {_PYTEST_FLAGS}" + "".join(f" {q(p)}" for p in test_paths)
@@ -104,12 +109,13 @@ def build_script(
             f"{pytest} --cov --cov-context=test "
             f"--cov-report= > {RUN_LOGS[0]} 2>&1 || true",
             _stage("exporting coverage"),
-            # Empty coverage means run 1 never got going, and the reason is in
-            # its own output, so surface that rather than coverage's bare
-            # "No data to report".
-            f"{py} -m coverage json --show-contexts -o {COVERAGE_PATH} || "
-            f"{{ echo 'chesterton: coverage recorded no data; the end of run 1 "
-            f"follows' >&2; tail -n 40 {RUN_LOGS[0]} >&2; exit 1; }}",
+            # Two causes seen live, so the message names neither as certain.
+            # "No data to report" means run 1 never got going, and its own
+            # output says why. "Killed" means the export ran out of memory.
+            f"{py} -m coverage json --show-contexts -o {COVERAGE_PATH}{include} || "
+            f"{{ echo 'chesterton: coverage export failed (\"Killed\" above means "
+            f"out of memory); the end of run 1 follows' >&2; "
+            f"tail -n 40 {RUN_LOGS[0]} >&2; exit 1; }}",
             _stage("baseline runs 2 and 3"),
             f"{pytest} > {RUN_LOGS[1]} 2>&1 || true",
             f"{pytest} > {RUN_LOGS[2]} 2>&1 || true",
@@ -145,12 +151,14 @@ async def build_seed(
     # Recorded in the seed, so every mutant run and ddmin probe uses the same
     # interpreter the baseline was measured under.
     test_command = test_command or default_test_command(python)
+    # The changed mutable sources: the only files coverage is read back for.
+    targets = sorted(f for f in changed_lines(pr.diff) if is_mutable_source(f))
 
     base = await runner.use_image(image_ref)
     tag = seed_tag(slug)
     result = await runner.run(
         base,
-        build_script(workdir, test_command, python, test_paths),
+        build_script(workdir, test_command, python, test_paths, coverage_include=targets),
         files={DIFF_PATH: pr.diff},
         disposable=False,
         tag=tag,
@@ -193,10 +201,9 @@ async def build_seed(
     }
 
     sources: dict[str, str] = {}
-    for file in sorted(changed_lines(pr.diff)):
-        if is_mutable_source(file):
-            raw = await runner.read_file(checkpoint, f"{workdir}/{file}")
-            sources[file] = raw.decode("utf-8")
+    for file in targets:
+        raw = await runner.read_file(checkpoint, f"{workdir}/{file}")
+        sources[file] = raw.decode("utf-8")
 
     return SeedRecord(
         slug=slug,
