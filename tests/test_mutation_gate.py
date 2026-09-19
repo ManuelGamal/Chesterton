@@ -64,6 +64,17 @@ def test_a_no_op_is_rejected_even_when_the_original_will_not_parse():
     assert gate.rejected == {"unchanged": 1}
 
 
+def test_a_compiling_no_op_of_an_unparseable_original_is_not_admitted():
+    # The same hole, in the shape that still gets through once the gate also
+    # compiles: here the mutant compiles, so only the unchanged check stands
+    # between this no-op and a fabricated finding.
+    gate = MutantGate()
+    mutant = a_mutant(original_src="    x = a\n", mutated_src="x = a\n")
+
+    assert gate.admit(mutant) is False
+    assert gate.rejected == {"unchanged": 1}
+
+
 def test_a_comment_only_change_to_an_unparseable_original_is_rejected():
     gate = MutantGate()
     mutant = a_mutant(
