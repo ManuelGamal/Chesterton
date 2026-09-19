@@ -12,7 +12,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "pytest-cov>=5.0"]
-sandbox = ["contree-sdk"]
+sandbox = ["contree-sdk", "crosshair-tool>=0.0.110"]
 
 [build-system]
 requires = ["hatchling"]
