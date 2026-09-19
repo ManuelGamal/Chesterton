@@ -66,9 +66,15 @@ def screen_script(original_f2p: list[str], augmented_f2p: list[str]) -> str:
     q = shlex.quote
     py = q(PYTHON)
     apply = "git apply --whitespace=nowarn"
+    # The agent patch applies the way SWE-bench's harness applies it: git
+    # apply, else GNU patch with fuzz. Live 2026-09-19, 10 xarray patches
+    # needed the fallback. Both tools' messages are kept (2>&1), since the
+    # first screen threw git's error away and left only "apply failed".
+    fuzzy = "patch --batch --fuzz=5 -p1 --no-backup-if-mismatch -i"
     return "\n".join([
         "cd /testbed",
-        f"{apply} {AGENT} || {{ echo CHESTERTON_APPLY=agent; exit 0; }}",
+        f"{{ {apply} {AGENT} || {fuzzy} {AGENT}; }} 2>&1 || "
+        "{ echo CHESTERTON_APPLY=agent; exit 0; }",
         f"{apply} {ORIGINAL} || {{ echo CHESTERTON_APPLY=original; exit 0; }}",
         f"{py} -m pytest -q -p no:cacheprovider {' '.join(map(q, original_f2p))} "
         "> /tmp/original.txt 2>&1; echo CHESTERTON_ORIGINAL=$?",

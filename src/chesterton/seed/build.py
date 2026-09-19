@@ -96,7 +96,14 @@ def build_script(
             "import pytest; find the right interpreter with "
             "scripts/probe_interpreter.py and pass --python' >&2; exit 1; }",
             _stage("applying the PR diff"),
-            f"git apply --whitespace=nowarn {DIFF_PATH}",
+            # SWE-bench's harness falls back to GNU patch when git apply
+            # refuses, so patches it counted as resolved must apply here too.
+            # Live 2026-09-19: 10 xarray agent patches lack a trailing context
+            # line; git apply calls them corrupt, patch applied all 10. git
+            # apply is all-or-nothing, so falling back after it is safe. No
+            # .orig backups: they would sit in the repository under test.
+            f"git apply --whitespace=nowarn {DIFF_PATH} || "
+            f"patch --batch --fuzz=5 -p1 --no-backup-if-mismatch -i {DIFF_PATH}",
             _stage("installing pytest-cov"),
             # Into the SAME interpreter the tests run under. The env var
             # silences pip's root-user warning, which otherwise fills stderr.

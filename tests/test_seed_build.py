@@ -259,6 +259,18 @@ async def test_an_invalid_slug_is_refused_before_any_sandbox_op(demo_seed):
     assert runner.calls == []
 
 
+def test_the_diff_falls_back_to_fuzzy_patch_as_swebenchs_harness_does():
+    # Live 2026-09-19: 10 xarray agent patches that SWE-bench marked resolved
+    # lack a trailing context line. `git apply` rejects them as corrupt; the
+    # harness's fallback, `patch --batch --fuzz=5 -p1`, applied all 10.
+    script = build_script("/testbed", "python -m pytest")
+
+    assert (
+        f"git apply --whitespace=nowarn {DIFF_PATH} || "
+        f"patch --batch --fuzz=5 -p1 --no-backup-if-mismatch -i {DIFF_PATH}"
+    ) in script
+
+
 def test_the_script_applies_the_diff_and_runs_the_suite_three_times():
     script = build_script("/testbed", "python -m pytest")
 
