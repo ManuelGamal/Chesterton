@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 
 import openai
 import pytest
@@ -52,6 +53,22 @@ async def test_a_run_that_cannot_afford_its_mutants_refuses_before_any_op(demo_s
 
     with pytest.raises(RunRefused, match="refusing to start"):
         await run_seed(demo_seed, runner, op_budget=0)
+
+    assert runner.calls == []
+
+
+async def test_the_refusal_counts_import_time_mutants_that_will_cost_an_op(demo_seed):
+    # Every line of the guard hunk runs only at import, so every mutant runs
+    # the whole suite. Counting only coverage-selected mutants would let this
+    # run start with a budget it cannot pay.
+    seed = replace(
+        demo_seed,
+        coverage={"pay.py": {line: [IMPORT_TIME] for line in (1, 2, 3, 4)}},
+    )
+    runner = FakeSandboxRunner()
+
+    with pytest.raises(RunRefused, match="refusing to start"):
+        await run_seed(seed, runner, op_budget=0)
 
     assert runner.calls == []
 

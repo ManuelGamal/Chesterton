@@ -32,7 +32,7 @@ from chesterton.execute.mutants import (
     VerdictCounts,
     count_verdicts,
     execute_mutants,
-    select_tests,
+    needs_op,
 )
 from chesterton.execute.pool import CONCURRENCY, RUN_OP_BUDGET, SandboxPool
 from chesterton.llm.mutants import propose
@@ -168,7 +168,9 @@ async def run_seed(
     mutants, rejected = generate(hunks, seed.sources, llm_mutants=llm_mutants)
 
     pool = SandboxPool(runner, concurrency=concurrency, op_budget=op_budget)
-    needed = sum(1 for m in mutants if select_tests(m, seed))
+    # needs_op, not select_tests: a mutant on an import-only line runs the
+    # whole suite, and that op must count before the run is allowed to start.
+    needed = sum(1 for m in mutants if needs_op(m, seed))
     if needed > pool.remaining:
         raise RunRefused(
             f"this run needs {needed} sandbox ops for its mutants alone and its "

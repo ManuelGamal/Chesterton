@@ -6,6 +6,7 @@ from chesterton.execute.mutants import (
     classify,
     count_verdicts,
     execute_mutants,
+    needs_op,
     select_tests,
 )
 from chesterton.execute.pool import SandboxPool
@@ -86,17 +87,30 @@ async def test_a_mutant_covered_only_by_flaky_tests_is_uncovered_and_costs_nothi
     assert pool.ops_used == 0
 
 
-async def test_an_import_time_hunk_is_not_described_as_unexecuted(demo_seed):
-    # Live, nomenclature-284: four model mutants on a changed import line
-    # were reported "no selectable test executes this hunk". The line runs on
-    # every import; coverage just cannot say which tests depend on it.
+async def test_an_import_time_hunk_runs_the_whole_selectable_suite(demo_seed):
+    # Live, nomenclature-284: four model mutants on a changed import line went
+    # untested. The line runs on every import, so coverage cannot name the
+    # tests that depend on it; the whole selectable suite is the honest set.
     seed = replace(demo_seed, coverage={"pay.py": {1: [IMPORT_TIME]}})
+    runner = exits(1)
+    pool = SandboxPool(runner)
 
-    [result] = await execute_mutants(SandboxPool(exits(1)), seed, [a_mutant(start=1, end=1)])
+    [result] = await execute_mutants(pool, seed, [a_mutant(start=1, end=1)])
 
-    assert result.verdict == "uncovered"
+    assert result.verdict == "killed"
     assert "import time" in result.detail
-    assert "no selectable test executes" not in result.detail
+    [(_, shell)] = runner.calls
+    assert f"--deselect {T_FLAKY}" in shell  # unselectable tests still excluded
+    assert T_CHARGE not in shell  # no coverage-picked ids: the whole suite
+    assert pool.ops_used == 1
+
+
+def test_an_import_time_hunk_needs_an_op_and_an_unexecuted_one_does_not(demo_seed):
+    imported = replace(demo_seed, coverage={"pay.py": {1: [IMPORT_TIME]}})
+    assert needs_op(a_mutant(start=1, end=1), imported) is True
+
+    # Line 3 is covered only by the flaky test: nothing selectable, not import.
+    assert needs_op(a_mutant(start=3, end=3), demo_seed) is False
 
 
 async def test_a_spent_budget_is_an_error_never_a_kill(demo_seed):

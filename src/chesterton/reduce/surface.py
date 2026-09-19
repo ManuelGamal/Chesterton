@@ -15,17 +15,19 @@ selectable test passed at head three times, so the search starts there.
 
 from __future__ import annotations
 
-import shlex
 from dataclasses import dataclass
 
+# A probe runs the whole selectable suite, not a coverage selection. The
+# command and timeout are shared with mutants on import-only lines, which
+# run the same suite, so they live in one place and are re-exported here.
+from chesterton.execute.mutants import SUITE_TIMEOUT_S, suite_command
 from chesterton.execute.pool import SandboxPool
 from chesterton.reduce.ddmin import Outcome, ddmin
 from chesterton.reduce.patch import patch_hunks, probe_files
 from chesterton.sandbox.protocol import RunResult
 from chesterton.seed.record import SeedRecord
 
-#: A probe runs the whole selectable suite, not a coverage selection.
-SUITE_TIMEOUT_S = 300.0
+__all__ = ["SUITE_TIMEOUT_S", "SurfaceResult", "suite_command", "undefended_surface"]
 
 
 @dataclass(frozen=True)
@@ -37,16 +39,6 @@ class SurfaceResult:
     exhausted: bool
     skipped: dict[str, int]
     note: str | None = None
-
-
-def suite_command(seed: SeedRecord) -> str:
-    deselect = " ".join(
-        f"--deselect {shlex.quote(test)}" for test in sorted(seed.flaky | seed.failing)
-    )
-    return (
-        f"cd {shlex.quote(seed.workdir)} && {seed.test_command} "
-        f"-q -p no:randomly -p no:cacheprovider {deselect}"
-    ).rstrip()
 
 
 def _outcome(result: RunResult) -> Outcome:
