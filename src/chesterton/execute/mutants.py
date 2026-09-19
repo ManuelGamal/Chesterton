@@ -38,6 +38,9 @@ Verdict = Literal["killed", "survived", "uncovered", "error"]
 #: Coverage-selected tests are few; this bounds a mutant that hangs them.
 MUTANT_TIMEOUT_S = 120.0
 
+#: A whole-suite run: ddmin probes, and mutants on import-only lines.
+SUITE_TIMEOUT_S = 300.0
+
 #: pytest.ExitCode, spelled out so an error names what happened.
 _PYTEST_EXIT = {
     2: "INTERRUPTED",
@@ -89,39 +92,65 @@ def _command(seed: SeedRecord, tests: Sequence[str]) -> str:
     )
 
 
-def _uncovered_detail(mutant: Mutant, seed: SeedRecord) -> str:
+def suite_command(seed: SeedRecord) -> str:
+    """The whole selectable suite: everything, minus flaky and failing tests."""
+    deselect = " ".join(
+        f"--deselect {shlex.quote(test)}" for test in sorted(seed.flaky | seed.failing)
+    )
+    return (
+        f"cd {shlex.quote(seed.workdir)} && {seed.test_command} "
+        f"-q -p no:randomly -p no:cacheprovider {deselect}"
+    ).rstrip()
+
+
+def _import_only(mutant: Mutant, seed: SeedRecord) -> bool:
+    """No selectable test runs the hunk, but it runs at import time.
+
+    Live, nomenclature-284 (2026-09-19): four model mutants on a changed
+    import line went untested, reported as "executed by no test". The line
+    runs on every import; coverage just cannot name the tests that depend
+    on it. The whole selectable suite is the honest set to run.
+    """
+    if select_tests(mutant, seed):
+        return False
     by_line = seed.coverage.get(mutant.file, {})
     lines = range(mutant.start_line, mutant.end_line + 1)
-    if any(IMPORT_TIME in by_line.get(line, []) for line in lines):
-        # Live, nomenclature-284: calling a changed import line "executed by
-        # no test" was false. It runs on every import; coverage just cannot
-        # name the tests that depend on it.
-        return (
-            "runs only at import time, so coverage cannot select the tests "
-            "that depend on it; not run"
-        )
-    return "no selectable test executes this hunk"
+    return any(IMPORT_TIME in by_line.get(line, []) for line in lines)
+
+
+def needs_op(mutant: Mutant, seed: SeedRecord) -> bool:
+    """Whether executing this mutant spends a sandbox op."""
+    return bool(select_tests(mutant, seed)) or _import_only(mutant, seed)
 
 
 async def _execute(pool: SandboxPool, seed: SeedRecord, mutant: Mutant) -> MutantResult:
     tests = select_tests(mutant, seed)
-    if not tests:
-        return MutantResult(
-            mutant, "uncovered", (), detail=_uncovered_detail(mutant, seed)
+    if tests:
+        command, timeout, note = _command(seed, tests), MUTANT_TIMEOUT_S, None
+    elif _import_only(mutant, seed):
+        command, timeout = suite_command(seed), SUITE_TIMEOUT_S
+        note = (
+            "the hunk runs only at import time, so coverage cannot select "
+            "the tests that depend on it; the whole selectable suite ran"
         )
+    else:
+        return MutantResult(
+            mutant, "uncovered", (), detail="no selectable test executes this hunk"
+        )
+
     try:
         result = await pool.run(
             seed.checkpoint_id,
-            _command(seed, tests),
+            command,
             files={f"{seed.workdir}/{mutant.file}": mutant.mutated_src},
-            timeout=MUTANT_TIMEOUT_S,
+            timeout=timeout,
         )
     except BudgetExhausted as exc:
         return MutantResult(mutant, "error", tests, detail=str(exc))
 
     verdict, detail = classify(result)
     return MutantResult(
-        mutant, verdict, tests, result.duration_s, detail, _tail(result.stdout)
+        mutant, verdict, tests, result.duration_s, detail or note, _tail(result.stdout)
     )
 
 

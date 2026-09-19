@@ -660,13 +660,28 @@ executed.
   caught. This is live justification for Phase 4's deterministic equivalence
   pre-filter; dead code after `raise`/`return` is the first case it should
   handle.
-- **`delete_guard` did not fire on the PR's own guard.** The guard logs, then
-  raises, and Phase 2 ruled out bodies with a log call before the raise.
-  Real-world guards usually look exactly like that, so the headline operator
-  should accept them.
-- **Mutants on import-only lines are unselectable.** The four on line 29 were
-  reported `uncovered` (now with honest wording). Running the whole selectable
-  suite for them would test them properly, at one suite run each.
+- ~~**`delete_guard` did not fire on the PR's own guard.**~~ **RESOLVED
+  2026-09-19.** A guard may now make bare calls, such as logging, before its
+  final `raise`/`return`; assignments are still excluded. Re-run live
+  (`runs/nomenclature-284-v2.json`): `delete_guard` fired first on the PR's
+  guard, removing the condition, the `log_error` and the `raise`, and was
+  **killed** by the PR's new test.
+- ~~**Mutants on import-only lines are unselectable.**~~ **RESOLVED
+  2026-09-19.** They now run the whole selectable suite, and the budget check
+  counts them. Live: of four model mutants on the import line, the two alias
+  renames were **killed** (`NameError` at the call site), and the two
+  importing a name that does not exist exited pytest 4 and are **error, not
+  kill**, per the rule that a mutant stopping a module importing is never
+  counted as caught.
+
+**Re-run after both fixes:** 8 mutants, **5 killed, 1 survived, 0 uncovered, 2
+error**, 11 ops, 25.5 s wall, per-mutant median 3.86 s and worst 4.77 s (a
+whole-suite run). This time the survivor is a genuine gap, not dead code:
+`raise ValueError("Validation error.")` drops the "check the log for
+details" text, and the PR's test uses `pytest.raises(ValueError)` without
+`match=`. Nothing pins the user-facing message. The dead-code survivor did
+not recur this run; model proposals vary, and the Phase 4 pre-filter is
+still needed.
 - **This seed is well defended, so it does not show the demo's moment.** A
   demo seed needs a PR with an undefended hunk (spec §20: curated selection).
 

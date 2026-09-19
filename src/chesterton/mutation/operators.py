@@ -54,26 +54,38 @@ def _comparator_text(node: cst.Comparison, index: int) -> str:
     return f"{_snippet(left)} {operator} {_snippet(target.comparator)}"
 
 
+def _is_bare_call(small: cst.BaseSmallStatement) -> bool:
+    return isinstance(small, cst.Expr) and isinstance(small.value, cst.Call)
+
+
 def _is_guard(node: cst.If) -> bool:
     """True when an if-block exists only to bail out.
 
-    A guard's body is nothing but a raise or a return. An if that does real
-    work is a different mutation entirely — deleting it is noisy rather than
-    pointed, and the spec's operator is specifically the quiet removal of a
-    bail-out.
+    A guard's body ENDS in a raise or a return, and anything before that is a
+    bare call: logging or reporting the failure it is about to raise. An if
+    that does real work is a different mutation entirely. Deleting it is noisy
+    rather than pointed, and the spec's operator is specifically the quiet
+    removal of a bail-out.
+
+    Bare calls were admitted on live evidence (2026-09-19). nomenclature PR
+    #284's guard logs, then raises, and the old rule (raise/return only) never
+    offered the headline operator on the headline case. Assignments before
+    the exit are still excluded; widening further is a separate decision.
     """
     if node.orelse is not None:
         return False
     body = node.body.body if isinstance(node.body, cst.IndentedBlock) else []
-    if not body:
-        return False
+    smalls: list[cst.BaseSmallStatement] = []
     for statement in body:
         if not isinstance(statement, cst.SimpleStatementLine):
             return False
-        for small in statement.body:
-            if not isinstance(small, (cst.Raise, cst.Return)):
-                return False
-    return True
+        smalls.extend(statement.body)
+    if not smalls or not isinstance(smalls[-1], (cst.Raise, cst.Return)):
+        return False
+    return all(
+        isinstance(small, (cst.Raise, cst.Return)) or _is_bare_call(small)
+        for small in smalls[:-1]
+    )
 
 
 class _Collector(cst.CSTVisitor):

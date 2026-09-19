@@ -49,9 +49,53 @@ def test_deleting_a_guard_removes_the_whole_clause_not_half_of_it():
 
 
 def test_a_non_guard_if_is_not_offered_for_deletion():
-    # Only if-blocks whose body is purely a raise or return are guards. Deleting
-    # an if that does real work is a different, much noisier mutation.
+    # Only if-blocks that exist to bail out are guards. Deleting an if that
+    # does real work is a different, much noisier mutation.
     source = "def f(x):\n    if x:\n        y = compute(x)\n        log(y)\n    return 1\n"
+    assert all(c.operator != "delete_guard" for c in find_candidates(source, [2]))
+
+
+# The shape of nomenclature PR #284's own guard, measured live 2026-09-19. The
+# old rule demanded a body of nothing but raise/return, so the headline
+# operator never fired on the headline case.
+LOGGED_GUARD = '''\
+def apply(self, res):
+    if not_defined := self.codes.validate(res.region):
+        log_error("region", not_defined)
+        raise ValueError("The validation failed.")
+    return res
+'''
+
+
+def test_a_guard_that_logs_before_raising_offers_deletion():
+    assert any(c.operator == "delete_guard" for c in find_candidates(LOGGED_GUARD, [2]))
+
+
+def test_deleting_a_logged_guard_removes_the_log_and_the_raise_together():
+    mutated = apply_candidate(LOGGED_GUARD, pick(LOGGED_GUARD, [2], "delete_guard"))
+    assert "if not_defined" not in mutated
+    assert "log_error" not in mutated
+    assert "raise ValueError" not in mutated
+    assert "return res" in mutated
+
+
+def test_a_block_that_only_logs_is_not_a_guard():
+    # A guard must bail out; logging alone changes nothing about control flow.
+    source = "def f(x):\n    if x:\n        log(x)\n    return 1\n"
+    assert all(c.operator != "delete_guard" for c in find_candidates(source, [2]))
+
+
+def test_a_block_that_logs_after_raising_is_not_a_guard_shape_we_accept():
+    # The exit must come LAST: statements after a raise are dead code, and a
+    # body with dead code is not the bail-out shape this operator targets.
+    source = "def f(x):\n    if x:\n        raise ValueError\n        log(x)\n    return 1\n"
+    assert all(c.operator != "delete_guard" for c in find_candidates(source, [2]))
+
+
+def test_an_assignment_before_the_raise_is_deliberately_not_accepted():
+    # Pins the boundary that was approved: bare calls (logging, reporting)
+    # before the exit, nothing else. Widening further is a separate decision.
+    source = "def f(x):\n    if x:\n        msg = describe(x)\n        raise ValueError(msg)\n    return 1\n"
     assert all(c.operator != "delete_guard" for c in find_candidates(source, [2]))
 
 
