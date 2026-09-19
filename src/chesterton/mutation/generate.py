@@ -63,6 +63,14 @@ def generate(
     def skip(reason: str) -> None:
         skipped[reason] = skipped.get(reason, 0) + 1
 
+    # One spelling on both sides of the lookup. A `sources` mapping built from
+    # a filesystem walk on Windows is keyed with backslashes while hunks come
+    # from a diff with forward slashes; unnormalised, every file silently
+    # yields zero mutants, reported as `no_source` — "the file was missing",
+    # not "the keys were spelled differently".
+    sources = {normalise_path(path): text for path, text in sources.items()}
+    hunks = [replace(hunk, file=normalise_path(hunk.file)) for hunk in hunks]
+
     for hunk in hunks:
         if not is_mutable_source(hunk.file):
             skip("not_mutable_source")

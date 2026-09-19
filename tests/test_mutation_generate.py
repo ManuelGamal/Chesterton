@@ -108,6 +108,28 @@ def test_a_model_supplied_path_is_normalised():
     assert mutants[0].file == "widgets/pay.py"
 
 
+def test_sources_keyed_with_backslashes_still_match_a_forward_slash_hunk():
+    # A sources map built from a Windows filesystem walk. Unnormalised, this
+    # produced zero mutants and a misleading {"no_source": 1}.
+    mutants, rejected = generate(
+        [Hunk("widgets/pay.py", 1, 5)], {"widgets\\pay.py": GUARDED}
+    )
+
+    assert mutants
+    assert "no_source" not in rejected
+    assert {m.file for m in mutants} == {"widgets/pay.py"}
+
+
+def test_a_backslash_hunk_still_matches_forward_slash_sources():
+    mutants, rejected = generate(
+        [Hunk("widgets\\pay.py", 1, 5)], {"widgets/pay.py": GUARDED}
+    )
+
+    assert mutants
+    assert "no_source" not in rejected
+    assert {m.file for m in mutants} == {"widgets/pay.py"}
+
+
 def test_the_same_edit_with_different_separators_deduplicates():
     # Two spellings of one file are one mutant, not two — otherwise we pay for
     # the same sandbox operation twice to learn the same thing.
