@@ -792,6 +792,39 @@ returning a `FAILED` image, so the adapter must catch the SDK's `ContreeError`
 family around the call; a post-hoc state check on the returned image can never
 fire.
 
+### Seed screening on UTBoost instances — MEASURED 2026-09-19
+
+UTBoost's 36 augmented instances were recovered by diffing
+`Bertsekas/SWE-Bench_{Verified,Lite}_UTBoost` against
+`princeton-nlp/SWE-bench_{Verified,Lite}` on `test_patch`. That gives exactly
+36, matching the paper. 14 are Django, whose suite is not pytest, so they are
+out. All 7 shortlisted images exist on Docker Hub under `swebench/`, and their
+interpreter is `/opt/miniconda3/envs/testbed/bin/python` (SWE-rebench images
+use `/opt/conda/...`). Seeded with `chesterton seed --swebench ID`, which uses
+the gold patch plus the original test_patch, scoped to its test files.
+
+| seed | scope | mutants | killed / survived | tier 0 | ddmin | per-mutant |
+|---|---|---|---|---|---|---|
+| xarray-7393 | 73 tests | 10 | 9 / 1 | 0 | 1 of 1 hunks needed | ~2 s |
+| matplotlib-23314 | 864 tests | 6 | 5 / 1 | 0 | 1 of 1 hunks needed | **median 23.3 s, over the 20 s target** |
+
+**Negative result, and it matters for §17.** On both instances, mutating the
+*gold* patch does not rediscover the gap UTBoost found. The PRs' own tests
+kill the gold patch's mutants, including `delete_guard` on matplotlib's
+`if not self.get_visible(): return`. UTBoost's gaps are gaps against
+*alternative* implementations. Its matplotlib test adds drawn content, which
+a fix that hides only the background would fail. Small mutations of the
+correct fix rarely reach those. Both survivors were also effectively no-op
+mutants (`dtype is None` to `== None`; `not x` to `x is False` on a bool),
+more live cases for the Phase 4 equivalence pre-filter.
+
+**Implication:** a SWE-bench *gold* patch is defended by construction, since
+its test_patch was written for it, so it is a poor demo seed. The thesis
+target is the *agent* patch: UTBoost found 345 agent patches that passed
+SWE-bench's tests and were wrong. That list is not published, but it is
+reconstructible from SWE-bench's `experiments` submissions: resolved patches
+that fail UTBoost's augmented test.
+
 **Survivor noise.** Triage deserves more of the six weeks than the
 visualization does, even though the visualization is what judges remember.
 
