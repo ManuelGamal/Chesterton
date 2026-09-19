@@ -118,6 +118,44 @@ async def test_tier0_skips_changed_lines_that_cannot_execute(demo_seed):
     assert ("pay.py", 3) not in report.tier0
 
 
+COMMENTED = (
+    "def charge(amount):\n"
+    "    # Reject a zero amount\n"
+    "    if not amount:\n"
+    '        raise ValueError("required")\n'
+    "    return amount\n"
+)
+COMMENTED_DIFF = (
+    "--- a/pay.py\n"
+    "+++ b/pay.py\n"
+    "@@ -1,2 +1,5 @@\n"
+    " def charge(amount):\n"
+    "+    # Reject a zero amount\n"
+    "+    if not amount:\n"
+    '+        raise ValueError("required")\n'
+    "     return amount\n"
+)
+
+
+async def test_no_hunk_is_built_from_a_line_that_cannot_execute(demo_seed):
+    # Live, Agentless on matplotlib-23314 (2026-09-19): a changed comment line
+    # became its own hunk, and the model "mutated" `# Call the base class`
+    # into invented calls, costing model calls and reporting meaningless
+    # uncovered rows.
+    seed = replace(
+        demo_seed,
+        pr=replace(demo_seed.pr, diff=COMMENTED_DIFF),
+        sources={"pay.py": COMMENTED},
+        coverage={"pay.py": {1: [T_CHARGE], 3: [T_CHARGE], 4: [T_CHARGE], 5: [T_CHARGE]}},
+        executable={"pay.py": [1, 3, 4, 5]},  # line 2 is the comment
+    )
+
+    report = await run_seed(seed, FakeSandboxRunner(), reduce=False)
+
+    assert report.hunks == 1  # the guard; no hunk for the comment alone
+    assert all(r.mutant.start_line >= 3 for r in report.results)
+
+
 def test_coverage_is_restricted_to_selectable_tests():
     coverage = {"pay.py": {2: [T_CHARGE, T_FLAKY], 3: [T_FLAKY]}}
 

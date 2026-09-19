@@ -100,7 +100,16 @@ def restrict_coverage(coverage: CoverageMap, allowed: Collection[str]) -> Covera
 def _semantic_hunks(seed: SeedRecord, changed: dict[str, list[int]]) -> list[Hunk]:
     hunks: list[Hunk] = []
     for file, source in sorted(seed.sources.items()):
-        lines = changed.get(file)
+        lines = changed.get(file, [])
+        runnable = seed.executable.get(file)
+        if runnable is not None:
+            # Only lines that can execute seed a hunk. Live on Agentless's
+            # matplotlib patch (2026-09-19), a changed comment became its own
+            # hunk and the model "mutated" `# Call the base class` into
+            # invented calls. Semantic grouping still widens each remaining
+            # line to its whole statement.
+            allowed = set(runnable)
+            lines = [line for line in lines if line in allowed]
         if lines:  # a pure deletion adds no line to mutate
             hunks.extend(semantic_hunks(source, file, lines))
     return hunks
