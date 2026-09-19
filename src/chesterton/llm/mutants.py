@@ -26,6 +26,13 @@ import json
 from chesterton.llm.client import EXECUTION_MODEL
 from chesterton.mutation.model import Mutant
 
+#: Every model mutant's operator, whatever label the reply claims. Ranking
+#: weighs operators, and the deterministic names (delete_guard above all) are
+#: earned by a detector that found that exact shape. A model that labels its
+#: own proposal delete_guard would outrank every one of them and mislabel the
+#: finding it produced; it does not get to grade its own work.
+MODEL_OPERATOR = "semantic"
+
 _PROMPT = """\
 You are helping audit a pull request by proposing small, plausible mutations \
 to changed code. A good mutation removes or weakens a protection an author \
@@ -148,7 +155,7 @@ def parse_mutants(
                 file=file,
                 start_line=start_line,
                 end_line=end_line,
-                operator=str(entry.get("operator", "semantic")),
+                operator=MODEL_OPERATOR,  # never the reply's own label
                 original_src=module_src,
                 mutated_src=_splice(module_src, start_line, end_line, replacement),
                 rationale=str(entry.get("rationale", "")),

@@ -116,6 +116,22 @@ def test_a_non_list_mutants_key_yields_no_mutants_rather_than_raising():
                          end_line=1, module_src="x = 1\n") == []
 
 
+def test_the_model_cannot_name_its_own_operator():
+    # Ruling P13. delete_guard is the top-weighted operator; a model claiming
+    # it would outrank every deterministic mutant under a tight budget and
+    # label a finding with a detection that never happened.
+    reply = (
+        '{"mutants": [{"mutated_src": "x = 2\\n", "rationale": "r",'
+        ' "operator": "delete_guard"}]}'
+    )
+
+    [mutant] = parse_mutants(
+        reply, file="a.py", start_line=1, end_line=1, module_src="x = 1\n"
+    )
+
+    assert mutant.operator == "semantic"
+
+
 def test_an_indented_reply_is_spliced_into_the_whole_module_and_admitted():
     # Ruling P12: mutated_src is the complete file. The model answers for
     # lines 8-9 only, at their real indentation; the splice puts that back
