@@ -21,6 +21,9 @@ build-backend = "hatchling.build"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "live: talks to the real Token Factory Sandboxes service; opt in with CHESTERTON_LIVE=1",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/chesterton"]
