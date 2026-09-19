@@ -42,6 +42,10 @@ class SeedRecord:
     failing: frozenset[str]
     sources: dict[str, str]
     built_at: str
+    #: The test files the baseline, mutant fan-out and ddmin probes are scoped
+    #: to. Empty means the whole suite. SWE-bench likewise runs only the files
+    #: a task touches; the whole of sympy three times over would take hours.
+    test_paths: tuple[str, ...] = ()
 
     def to_json(self) -> str:
         payload = asdict(self)
@@ -64,4 +68,6 @@ class SeedRecord:
             file: {int(line): tests for line, tests in lines.items()}
             for file, lines in payload["coverage"].items()
         }
+        # Records written before scoping existed carry no test_paths.
+        payload["test_paths"] = tuple(payload.get("test_paths", ()))
         return cls(**payload)

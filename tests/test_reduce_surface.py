@@ -117,3 +117,14 @@ def test_the_suite_command_deselects_every_unselectable_test(demo_seed):
 
     assert f"--deselect {T_FLAKY}" in command
     assert command.startswith("cd /testbed && python -m pytest")
+
+
+def test_the_suite_command_stays_inside_the_seeds_test_scope(demo_seed):
+    # A ddmin probe runs "the whole selectable suite". For a scoped seed that
+    # must mean the scoped files, or one probe runs all of sympy.
+    seed = replace(demo_seed, test_paths=("tests/test_pay.py",))
+
+    command = suite_command(seed)
+
+    assert " tests/test_pay.py " in command
+    assert f"--deselect {T_FLAKY}" in command

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import shlex
+from collections.abc import Sequence
 from datetime import datetime, timezone
 
 from chesterton.covmap.invert import invert_coverage
@@ -66,9 +67,17 @@ def default_test_command(python: str) -> str:
     return f"{shlex.quote(python)} -m pytest"
 
 
-def build_script(workdir: str, test_command: str, python: str = DEFAULT_PYTHON) -> str:
+def build_script(
+    workdir: str,
+    test_command: str,
+    python: str = DEFAULT_PYTHON,
+    test_paths: Sequence[str] = (),
+) -> str:
     q = shlex.quote
     py = q(python)
+    # The same scope on every run, so the three runs are comparable and the
+    # coverage map covers exactly what run time will select from.
+    pytest = f"{test_command} {_PYTEST_FLAGS}" + "".join(f" {q(p)}" for p in test_paths)
     return "\n".join(
         [
             "set -e",
@@ -92,7 +101,7 @@ def build_script(workdir: str, test_command: str, python: str = DEFAULT_PYTHON) 
             _stage("baseline run 1 of 3, under coverage"),
             # `|| true` on every test run: a failing test is data here, not a
             # build failure. classify_runs sorts the outcomes out.
-            f"{test_command} {_PYTEST_FLAGS} --cov --cov-context=test "
+            f"{pytest} --cov --cov-context=test "
             f"--cov-report= > {RUN_LOGS[0]} 2>&1 || true",
             _stage("exporting coverage"),
             # Empty coverage means run 1 never got going, and the reason is in
@@ -102,8 +111,8 @@ def build_script(workdir: str, test_command: str, python: str = DEFAULT_PYTHON) 
             f"{{ echo 'chesterton: coverage recorded no data; the end of run 1 "
             f"follows' >&2; tail -n 40 {RUN_LOGS[0]} >&2; exit 1; }}",
             _stage("baseline runs 2 and 3"),
-            f"{test_command} {_PYTEST_FLAGS} > {RUN_LOGS[1]} 2>&1 || true",
-            f"{test_command} {_PYTEST_FLAGS} > {RUN_LOGS[2]} 2>&1 || true",
+            f"{pytest} > {RUN_LOGS[1]} 2>&1 || true",
+            f"{pytest} > {RUN_LOGS[2]} 2>&1 || true",
         ]
     )
 
@@ -126,6 +135,7 @@ async def build_seed(
     workdir: str = DEFAULT_WORKDIR,
     python: str = DEFAULT_PYTHON,
     test_command: str | None = None,
+    test_paths: Sequence[str] = (),
     timeout: float = SEED_TIMEOUT_S,
 ) -> SeedRecord:
     if not is_valid_slug(slug):
@@ -140,7 +150,7 @@ async def build_seed(
     tag = seed_tag(slug)
     result = await runner.run(
         base,
-        build_script(workdir, test_command, python),
+        build_script(workdir, test_command, python, test_paths),
         files={DIFF_PATH: pr.diff},
         disposable=False,
         tag=tag,
@@ -198,4 +208,5 @@ async def build_seed(
         failing=selection.failing,
         sources=sources,
         built_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        test_paths=tuple(test_paths),
     )

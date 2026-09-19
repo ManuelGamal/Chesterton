@@ -162,6 +162,43 @@ async def test_the_chosen_interpreter_runs_the_tests_at_run_time_too(demo_seed):
     assert seed.test_command == f"{TESTBED_PY} -m pytest"
 
 
+SCOPE = ("xarray/tests/test_indexes.py", "xarray/tests/test_dataarray.py")
+
+
+def test_scoped_test_paths_reach_every_baseline_run():
+    # SWE-bench runs only the test files a task touches; the whole suite of
+    # sympy or matplotlib, three times over, would take hours.
+    script = build_script("/testbed", "python -m pytest", test_paths=SCOPE)
+    runs = [line for line in script.splitlines() if "python -m pytest" in line]
+
+    assert len(runs) == 3
+    for run in runs:
+        assert "xarray/tests/test_indexes.py xarray/tests/test_dataarray.py" in run
+
+
+def test_an_unscoped_build_runs_the_whole_suite_as_before():
+    script = build_script("/testbed", "python -m pytest")
+    assert "test_indexes" not in script
+
+
+async def test_the_scope_is_recorded_so_run_time_uses_it_too(demo_seed):
+    seed = await build_seed(
+        a_built_runner(), demo_seed.pr, slug="demo",
+        image_ref="docker://example/pay", test_paths=SCOPE,
+    )
+
+    assert seed.test_paths == SCOPE
+    assert SeedRecord.from_json(seed.to_json()).test_paths == SCOPE
+
+
+def test_a_seed_written_before_scoping_existed_still_loads(demo_seed):
+    # nomenclature-284's record predates test_paths; it must stay usable.
+    payload = json.loads(demo_seed.to_json())
+    del payload["test_paths"]
+
+    assert SeedRecord.from_json(json.dumps(payload)).test_paths == ()
+
+
 async def test_a_baseline_where_nothing_passes_every_run_is_refused(demo_seed):
     runner = a_built_runner(**{RUN_LOGS[1]: STABLE.replace("PASSED", "FAILED")})
 

@@ -93,13 +93,18 @@ def _command(seed: SeedRecord, tests: Sequence[str]) -> str:
 
 
 def suite_command(seed: SeedRecord) -> str:
-    """The whole selectable suite: everything, minus flaky and failing tests."""
+    """The whole selectable suite: the seed's scope, minus flaky and failing tests.
+
+    Scoped to `seed.test_paths` when set. For a SWE-bench seed "the whole
+    suite" means the task's test files, or one ddmin probe runs all of sympy.
+    """
+    scope = " ".join(shlex.quote(path) for path in seed.test_paths)
     deselect = " ".join(
         f"--deselect {shlex.quote(test)}" for test in sorted(seed.flaky | seed.failing)
     )
     return (
         f"cd {shlex.quote(seed.workdir)} && {seed.test_command} "
-        f"-q -p no:randomly -p no:cacheprovider {deselect}"
+        f"-q -p no:randomly -p no:cacheprovider {scope} {deselect}"
     ).rstrip()
 
 

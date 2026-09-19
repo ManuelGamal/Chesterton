@@ -57,6 +57,24 @@ def test_seed_records_the_interpreter_passed_with_python(tmp_path, demo_seed):
     assert seed.test_command == "/opt/conda/envs/testbed/bin/python -m pytest"
 
 
+def test_seed_records_the_test_scope_passed_with_tests(tmp_path, demo_seed):
+    out = tmp_path / "demo.json"
+
+    async def fetch(url):
+        return demo_seed.pr
+
+    code = main(
+        ["seed", "--pr", "https://github.com/acme/pay/pull/1", "--image", "x",
+         "--slug", "demo", "--out", str(out),
+         "--tests", "tests/test_pay.py", "tests/test_refund.py"],
+        runner_factory=a_seedable_runner, fetch=fetch,
+    )
+
+    assert code == 0
+    seed = SeedRecord.from_json(out.read_text(encoding="utf-8"))
+    assert seed.test_paths == ("tests/test_pay.py", "tests/test_refund.py")
+
+
 def test_run_writes_a_report_and_names_the_undefended_surface(tmp_path, demo_seed, capsys):
     seed_path = tmp_path / "demo.json"
     seed_path.write_text(demo_seed.to_json(), encoding="utf-8")

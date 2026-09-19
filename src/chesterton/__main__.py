@@ -60,6 +60,14 @@ def build_parser() -> argparse.ArgumentParser:
         "images this is /opt/conda/envs/testbed/bin/python, not the `python` "
         "on PATH (find it with scripts/probe_interpreter.py)",
     )
+    seed.add_argument(
+        "--tests",
+        nargs="+",
+        default=[],
+        metavar="PATH",
+        help="scope the baseline and every run to these test files; the "
+        "whole suite if omitted",
+    )
     seed.add_argument("--out", required=True, type=Path)
 
     run = commands.add_parser("run", help="run Chesterton against a seed")
@@ -113,7 +121,8 @@ async def _seed(args, runner_factory, fetch) -> int:
     runner = runner_factory()
     try:
         seed = await build_seed(
-            runner, pr, slug=args.slug, image_ref=args.image, python=args.python
+            runner, pr, slug=args.slug, image_ref=args.image,
+            python=args.python, test_paths=args.tests,
         )
     except SeedBuildError as exc:
         print(f"seed build failed: {exc}", file=sys.stderr)
