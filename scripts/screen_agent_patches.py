@@ -58,8 +58,19 @@ def _ids(field) -> list[str]:
     return json.loads(field) if isinstance(field, str) else list(field)
 
 
+#: `diff --git a/x b/x`, and the quoted form git uses when a path has
+#: non-ASCII or special characters: `diff --git "a/tem\303\244ge.png" "b/..."`.
+#: Live 2026-09-20, sphinx-7440 carried one and a bare split crashed.
+_HEADER = re.compile(r'^diff --git ("?)a/(?P<a>.+?)\1 ("?)b/(?P<b>.+?)\3$')
+
+
 def _files(diff: str) -> list[str]:
-    return [l.split(" b/", 1)[1].strip() for l in diff.splitlines() if l.startswith("diff --git ")]
+    files = []
+    for line in diff.splitlines():
+        match = _HEADER.match(line)
+        if match:
+            files.append(match.group("b"))
+    return files
 
 
 def selector(tests: list[str], test_files: list[str]) -> str:
@@ -162,6 +173,11 @@ async def main(patch_dir: Path, instance_ids: list[str]) -> int:
     pool = SandboxPool(runner, op_budget=total)
     try:
         for iid in instance_ids:
+            if (patch_dir / iid / "screen.json").exists():
+                # Screening costs one sandbox op per patch; never pay twice.
+                # Delete the file to re-screen a task.
+                print(f"\n{iid}: already screened, skipped")
+                continue
             if iid not in originals or iid not in augmenteds:
                 print(f"\n{iid}: not in both datasets, skipped")
                 continue
