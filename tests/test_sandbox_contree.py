@@ -1,5 +1,8 @@
 import builtins
 import inspect
+from datetime import timedelta
+from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 
@@ -109,3 +112,66 @@ def test_a_missing_project_id_fails_with_a_legible_error(monkeypatch):
 
     with pytest.raises(RuntimeError, match="NEBIUS_PROJECT_ID"):
         runner._handle()
+
+
+class _FakeImage:
+    """A ContreeImage double that records what run() was handed.
+
+    Injected through `runner._sdk`, so the adapter's own run() body executes
+    with no network and no credentials.
+    """
+
+    def __init__(self, *, exit_code: int = 0, raises: Exception | None = None):
+        self.run_kwargs: dict | None = None
+        self._exit_code = exit_code
+        self._raises = raises
+
+    async def run(self, **kwargs):
+        self.run_kwargs = kwargs
+        if self._raises is not None:
+            raise self._raises
+        return SimpleNamespace(
+            stdout="out",
+            stderr="err",
+            exit_code=self._exit_code,
+            elapsed=timedelta(seconds=1.5),
+            uuid=UUID(int=7),
+        )
+
+
+def a_runner_over(image: _FakeImage) -> ConTreeSandboxRunner:
+    async def use(ref, strict=False):
+        return image
+
+    runner = ConTreeSandboxRunner(api_key="unused", project_id="project-unused")
+    runner._sdk = SimpleNamespace(images=SimpleNamespace(use=use))
+    return runner
+
+
+async def test_file_contents_reach_the_sdk_as_bytes_not_as_a_path():
+    # contree-sdk treats a str value as a LOCAL PATH to open (it wraps it in
+    # Path()); only bytes is uploaded as contents. Asserting the mapping was
+    # merely "passed through" is what let the str version survive.
+    image = _FakeImage()
+    source = "def charge(amount):\n    return amount\n"
+
+    await a_runner_over(image).run(
+        "ckpt", "pytest -q", files={"/repo/pay.py": source}
+    )
+
+    handed = image.run_kwargs["files"]
+    assert isinstance(handed, dict)
+    assert isinstance(handed["/repo/pay.py"], bytes)
+    assert handed["/repo/pay.py"].decode("utf-8") == source
+
+
+async def test_bytes_pass_through_and_destinations_use_forward_slashes():
+    # The SDK builds image paths with PurePosixPath, which reads a backslash
+    # as part of one flat filename rather than as a separator.
+    image = _FakeImage()
+
+    await a_runner_over(image).run(
+        "ckpt", "pytest -q", files={"repo\\widgets\\pay.py": b"x = 1\n"}
+    )
+
+    assert image.run_kwargs["files"] == {"repo/widgets/pay.py": b"x = 1\n"}

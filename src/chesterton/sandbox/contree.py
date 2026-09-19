@@ -22,6 +22,13 @@ Two shapes worth knowing. `run()` returns another `ContreeImage`, not a result
 object — the image *is* the checkpoint, so runs chain. And `ContreeImage` is
 awaitable (`__await__`), which is what makes `await image.run(...)` work even
 though `run` is not itself a coroutine function.
+
+One trap worth knowing. `run(files=...)` takes `{image_path: source}`, and in
+`UploadFileSpec._prepare_files` a `str` source is a LOCAL FILE PATH — it is
+wrapped in `Path(...)` and opened. Only `bytes` is uploaded as content. Our
+callers hold file *contents* as text (a mutant's `mutated_src`), so passing
+them straight through would ask the SDK to open a file whose name is the
+source code. `_as_upload` encodes at this boundary so nothing else has to know.
 """
 
 from __future__ import annotations
@@ -29,6 +36,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 
+from chesterton.paths import normalise_path
 from chesterton.sandbox.protocol import RunResult
 
 #: Trailing slash matches ContreeEndpoint.TOKEN_FACTORY_SANDBOXES.
@@ -52,6 +60,31 @@ _MISSING_PROJECT = (
     f"{_ENV_PROJECT}, or pass project_id=..., using the id from "
     "https://tokenfactory.nebius.com/project/api-keys"
 )
+
+
+def _as_upload(files: Mapping[str, str | bytes]) -> dict[str, bytes]:
+    """File contents in the only form the SDK uploads as contents: bytes.
+
+    Destination keys are image paths, which the SDK builds with
+    `PurePosixPath`; a backslash there is not a separator but part of one flat
+    filename, so keys are normalised to forward slashes too.
+    """
+    upload: dict[str, bytes] = {}
+    for destination, content in files.items():
+        if isinstance(content, str):
+            content = content.encode("utf-8")
+        elif not isinstance(content, bytes):
+            # A Path here would be uploaded as a local file — the very
+            # confusion this function exists to rule out.
+            raise TypeError(
+                f"file contents for {destination!r} must be str or bytes, "
+                f"not {type(content).__name__}"
+            )
+        key = normalise_path(destination)
+        if key in upload:
+            raise ValueError(f"two destinations normalise to {key!r}")
+        upload[key] = content
+    return upload
 
 
 class ConTreeSandboxRunner:
@@ -128,7 +161,7 @@ class ConTreeSandboxRunner:
         checkpoint_id: str,
         shell: str,
         *,
-        files: Mapping[str, str] | None = None,
+        files: Mapping[str, str | bytes] | None = None,
         disposable: bool = True,
         tag: str | None = None,
         timeout: float | None = None,
@@ -137,7 +170,7 @@ class ConTreeSandboxRunner:
         image = await sdk.images.use(checkpoint_id)
         result = await image.run(
             shell=shell,
-            files=dict(files) if files else None,
+            files=_as_upload(files) if files else None,
             disposable=disposable,
             tag=tag,
             timeout=timeout,

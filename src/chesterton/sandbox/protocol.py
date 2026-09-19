@@ -43,14 +43,15 @@ class SandboxRunner(Protocol):
         checkpoint_id: str,
         shell: str,
         *,
-        files: Mapping[str, str] | None = None,
+        files: Mapping[str, str | bytes] | None = None,
         disposable: bool = True,
         tag: str | None = None,
         timeout: float | None = None,
     ) -> RunResult:
         """Fork `checkpoint_id`, write `files`, run `shell`.
 
-        `files` maps destination path to file contents.
+        `files` maps destination path to file CONTENTS — text or bytes,
+        never a local path to read from. Text is written as UTF-8.
         `disposable=False` persists the resulting filesystem as a new
         checkpoint and returns its id; `disposable=True` returns None.
         `tag` names the resulting checkpoint so it survives garbage collection.

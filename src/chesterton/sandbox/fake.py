@@ -18,7 +18,7 @@ class FakeSandboxRunner:
         self._responses = dict(responses or {})
         self._ids = itertools.count(1)
         self.calls: list[tuple[str, str]] = []
-        self.files_written: list[dict[str, str]] = []
+        self.files_written: list[dict[str, str | bytes]] = []
         self.options: list[dict] = []
 
     async def use_image(self, ref: str) -> str:
@@ -29,7 +29,7 @@ class FakeSandboxRunner:
         checkpoint_id: str,
         shell: str,
         *,
-        files: Mapping[str, str] | None = None,
+        files: Mapping[str, str | bytes] | None = None,
         disposable: bool = True,
         tag: str | None = None,
         timeout: float | None = None,
