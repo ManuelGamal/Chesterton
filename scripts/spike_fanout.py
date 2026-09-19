@@ -88,6 +88,11 @@ async def main(image_ref: str, test_cmd: str, rounds: int) -> None:
         base, test_cmd, disposable=False, tag="chesterton:spike-base"
     )
     build = time.perf_counter() - t0
+    if prepped.error is not None:
+        # An errored OPERATION (timeout, cancellation, service failure) is
+        # not a code bug — dropping the error text here and calling it an
+        # "adapter bug" sent whoever read this looking in the wrong place.
+        sys.exit(f"Baseline build errored (not an adapter bug): {prepped.error}")
     if prepped.checkpoint_id is None:
         sys.exit("Non-disposable run returned no checkpoint id — adapter bug.")
     print(f"  built in {build:.1f}s -> {prepped.checkpoint_id}")

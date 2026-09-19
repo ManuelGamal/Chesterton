@@ -30,11 +30,17 @@ INFERENCE_HOST = "api.tokenfactory.nebius.com"
 #: — the mechanic the whole project rests on — genuinely works.
 SENTINEL = "/tmp/chesterton-sentinel"
 
-results: list[tuple[str, bool, str]] = []
+results: list[tuple[str, bool, str, bool]] = []
 
 
-def record(name: str, ok: bool, detail: str = "") -> bool:
-    results.append((name, ok, detail))
+def record(name: str, ok: bool, detail: str = "", *, errored: bool = False) -> bool:
+    """`errored` marks a sandbox OPERATION failure (timeout, cancellation, a
+    service error, or a bug in this script), as opposed to a check that ran
+    to completion and came back false. The two must never share a diagnosis:
+    an errored run proves nothing about the design question the check asks,
+    and summarise() must not claim otherwise (see ruling on R2).
+    """
+    results.append((name, ok, detail, errored))
     mark = "PASS" if ok else "FAIL"
     print(f"  [{mark}] {name}" + (f" — {detail}" if detail else ""))
     return ok
@@ -78,19 +84,27 @@ async def main(image_ref: str) -> int:
     print("\n2. Running a trivial command ...")
     try:
         r = await runner.run(base, "echo hello-from-sandbox")
-        record(
-            "command executes",
-            r.exit_code == 0 and "hello-from-sandbox" in r.stdout,
-            f"exit={r.exit_code} stdout={r.stdout.strip()!r}",
-        )
-        record(
-            "disposable run yields no checkpoint",
-            r.checkpoint_id is None,
-            f"checkpoint_id={r.checkpoint_id!r}",
-        )
     except Exception as exc:
-        record("command executes", False, f"{type(exc).__name__}: {exc}")
+        record("command executes", False, f"{type(exc).__name__}: {exc}", errored=True)
         return summarise()
+    # An errored OPERATION (timeout, cancellation, service failure) comes back
+    # as `.error` rather than a raised exception now — check it before
+    # exit_code or stdout, which are meaningless (exit_code is always None) on
+    # error. Read as a PASS or misdiagnosed as some other failure, this is
+    # exactly the false-positive class this project keeps tripping on.
+    if r.error is not None:
+        record("command executes", False, r.error, errored=True)
+        return summarise()
+    record(
+        "command executes",
+        r.exit_code == 0 and "hello-from-sandbox" in r.stdout,
+        f"exit={r.exit_code} stdout={r.stdout.strip()!r}",
+    )
+    record(
+        "disposable run yields no checkpoint",
+        r.checkpoint_id is None,
+        f"checkpoint_id={r.checkpoint_id!r}",
+    )
 
     # 3. Persist a checkpoint, tagged. Untagged images can be garbage-collected
     #    and judging is six weeks after submission, so tagging must work.
@@ -102,11 +116,19 @@ async def main(image_ref: str) -> int:
             disposable=False,
             tag="chesterton:smoke",
         )
-        ok = built.checkpoint_id is not None and built.checkpoint_id != base
-        record("checkpoint persists with a new id", ok, f"id={built.checkpoint_id}")
     except Exception as exc:
-        record("checkpoint persists", False, f"{type(exc).__name__}: {exc}")
+        record(
+            "checkpoint persists with a new id",
+            False,
+            f"{type(exc).__name__}: {exc}",
+            errored=True,
+        )
         return summarise()
+    if built.error is not None:
+        record("checkpoint persists with a new id", False, built.error, errored=True)
+        return summarise()
+    ok = built.checkpoint_id is not None and built.checkpoint_id != base
+    record("checkpoint persists with a new id", ok, f"id={built.checkpoint_id}")
 
     if built.checkpoint_id is None:
         return summarise()
@@ -119,14 +141,29 @@ async def main(image_ref: str) -> int:
             runner.run(built.checkpoint_id, f"cat {SENTINEL}"),
             runner.run(built.checkpoint_id, f"cat {SENTINEL}"),
         )
-        both_ok = all(f.exit_code == 0 and "persisted" in f.stdout for f in forks)
+    except Exception as exc:
         record(
             "forks inherit the parent filesystem",
-            both_ok,
-            f"exits={[f.exit_code for f in forks]}",
+            False,
+            f"{type(exc).__name__}: {exc}",
+            errored=True,
         )
-    except Exception as exc:
-        record("forks inherit parent filesystem", False, f"{type(exc).__name__}: {exc}")
+    else:
+        errors = [f.error for f in forks if f.error is not None]
+        if errors:
+            record(
+                "forks inherit the parent filesystem",
+                False,
+                "; ".join(errors),
+                errored=True,
+            )
+        else:
+            both_ok = all(f.exit_code == 0 and "persisted" in f.stdout for f in forks)
+            record(
+                "forks inherit the parent filesystem",
+                both_ok,
+                f"exits={[f.exit_code for f in forks]}",
+            )
 
     # 5. Network egress from inside a sandbox to the inference API. This is
     #    undocumented and an open community question. If it fails, any design
@@ -135,32 +172,79 @@ async def main(image_ref: str) -> int:
     print(f"\n5. Probing egress to {INFERENCE_HOST} from inside a sandbox ...")
     try:
         dns = await runner.run(base, f"getent hosts {INFERENCE_HOST} || echo NO_DNS")
+    except Exception as exc:
         record(
             "DNS resolves inside the sandbox",
-            "NO_DNS" not in dns.stdout,
-            dns.stdout.strip()[:80] or "(empty)",
+            False,
+            f"{type(exc).__name__}: {exc}",
+            errored=True,
         )
+    else:
+        if dns.error is not None:
+            record("DNS resolves inside the sandbox", False, dns.error, errored=True)
+        else:
+            record(
+                "DNS resolves inside the sandbox",
+                "NO_DNS" not in dns.stdout,
+                dns.stdout.strip()[:80] or "(empty)",
+            )
 
+    try:
         tcp = await runner.run(
             base,
             "bash -c 'timeout 8 bash -c \"exec 3<>/dev/tcp/"
             f"{INFERENCE_HOST}/443\" && echo EGRESS_OK || echo EGRESS_BLOCKED'",
         )
+    except Exception as exc:
         record(
             "TCP:443 egress permitted",
-            "EGRESS_OK" in tcp.stdout,
-            tcp.stdout.strip()[:80] or "(empty)",
+            False,
+            f"{type(exc).__name__}: {exc}",
+            errored=True,
         )
-    except Exception as exc:
-        record("egress probe", False, f"{type(exc).__name__}: {exc}")
+    else:
+        if tcp.error is not None:
+            record("TCP:443 egress permitted", False, tcp.error, errored=True)
+        else:
+            record(
+                "TCP:443 egress permitted",
+                "EGRESS_OK" in tcp.stdout,
+                tcp.stdout.strip()[:80] or "(empty)",
+            )
 
     print(f"\nTotal wall clock: {time.perf_counter() - started:.1f}s")
     await runner.aclose()
     return summarise()
 
 
+#: ForbiddenError names an entitlement problem, not a design finding about
+#: whatever step happened to hit it — Sandboxes is a separate beta
+#: entitlement from inference, and no amount of code fixes it. It fires
+#: whenever the error text names it, regardless of which check surfaced it
+#: (ruling on R2: the hint must fire on the error text, not on a fixed step).
+_FORBIDDEN_HINT = (
+    "The error names ForbiddenError: the key authenticates but is NOT "
+    "authorised for Sandboxes — a separate beta entitlement from inference. "
+    "Request access via the Token Factory console or contree@nebius.com "
+    "before anything else; no amount of code fixes this."
+)
+
+#: Shown for a FAIL that came from an errored sandbox OPERATION (or an
+#: unexpected bug in this script) rather than a check that ran to completion.
+#: Such a failure proves nothing about the design question the check asks —
+#: pairing it with that check's normal diagnosis is exactly the
+#: "misdiagnosed as some other failure" defect this project keeps tripping on.
+_ERRORED_HINT = (
+    "This was a sandbox OPERATION failure (timeout, cancellation, a service "
+    "error, or a bug in this script), not a completed check. It does not by "
+    "itself confirm this check's usual design conclusion — see the error "
+    "text above, and rule out an infrastructure problem before treating this "
+    "as a finding."
+)
+
+
 def summarise() -> int:
-    failed = [(n, d) for n, ok, d in results if not ok]
+    failed = [(n, d, errored) for n, ok, d, errored in results if not ok]
     print("\n" + "=" * 62)
     if not failed:
         print("ALL CHECKS PASSED — the sandbox path works end to end.")
@@ -174,11 +258,7 @@ def summarise() -> int:
             "work until this does. Check the key and the /sandboxes base URL."
         ),
         "command executes": (
-            "The SDK connects but cannot run anything. If the error is "
-            "ForbiddenError, the key authenticates but is NOT authorised for "
-            "Sandboxes — it is a separate beta entitlement from inference. "
-            "Request access via the Token Factory console or contree@nebius.com "
-            "before anything else; no amount of code fixes this."
+            "The SDK connects but cannot run anything."
         ),
         "checkpoint persists with a new id": (
             "disposable=False is not producing a reusable checkpoint. The entire "
@@ -199,11 +279,16 @@ def summarise() -> int:
             "egress. Keep inference on the orchestrator."
         ),
     }
-    for name, detail in failed:
+    for name, detail, errored in failed:
         print(f"  {name}: {detail}")
-        note = meanings.get(name)
-        if note:
-            print(f"      -> {note}\n")
+        if "ForbiddenError" in detail:
+            print(f"      -> {_FORBIDDEN_HINT}\n")
+        elif errored:
+            print(f"      -> {_ERRORED_HINT}\n")
+        else:
+            note = meanings.get(name)
+            if note:
+                print(f"      -> {note}\n")
     return 1
 
 
