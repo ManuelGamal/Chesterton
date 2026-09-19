@@ -57,6 +57,23 @@ def test_an_except_header_maps_to_the_handler_not_the_whole_try():
     assert hunks[0].start_line == except_line
 
 
+#: An `if` too long to expand into (16 lines > MAX_HUNK_LINES), so a line in
+#: its body resolves to its own statement while the header resolves to the
+#: whole `if` — two nested spans for one edit.
+LONG_IF = "def f(x):\n    if x:\n" + "".join(
+    f"        a{i} = {i}\n" for i in range(15)
+) + "    return x\n"
+
+
+def test_nested_spans_collapse_to_the_outermost_hunk():
+    # Mutant.content_hash is keyed on hunk bounds, so two overlapping hunks
+    # over one edit would hash differently, pass dedup twice, cost two sandbox
+    # operations and report two survivors for one behaviour change.
+    hunks = semantic_hunks(LONG_IF, "f.py", [2, 5])
+
+    assert [(h.start_line, h.end_line) for h in hunks] == [(2, 17)]
+
+
 def test_a_decorator_line_yields_a_single_line_hunk():
     # Stripping @rate_limit means deleting exactly that line.
     hunks = semantic_hunks(DECORATED, "pay.py", [1])
