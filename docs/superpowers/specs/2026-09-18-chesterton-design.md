@@ -588,10 +588,24 @@ fan-out architecture rests on.
 The 0.2s spread over three rounds matters as much as the speed: a live demo
 needs the *worst* case to be fast, not the median.
 
-### Re-measured against a real suite (2026-09-18)
+### Re-measured against a real suite (2026-09-18) — INVALID, see correction
+
+> **CORRECTION 2026-09-19. This measurement did not run a test suite.** In a
+> SWE-rebench image the `python` on PATH is conda *base*
+> (`/opt/conda/bin/python`), which has no pytest; the repository's
+> dependencies live in `/opt/conda/envs/testbed/bin/python`. Measured by
+> `scripts/probe_interpreter.py`: plain `python -m pytest` there exits **1**
+> with `No module named pytest`. The spike counted exit 1 as "tests ran and
+> failed", so every one of the 72 "runs" below was an interpreter failing to
+> import pytest. The table measures fork + interpreter start + an ImportError.
+> The fork *mechanics* still stand (the synthetic `sleep 2` column is
+> unaffected), but **"the 20s target holds with real work" is unproven** until
+> a real run under the testbed interpreter. The spike's classification is the
+> defect: exit 1 is a test failure only when pytest actually started.
 
 `spike_fanout.py docker://swerebench/…nomenclature-284 "python -m pytest -q -x" 3`
-— a real prebuilt image running a real pytest invocation in every fork.
+— intended as a real prebuilt image running a real pytest invocation in every
+fork; see the correction above for what it actually ran.
 
 | | synthetic `sleep 2` | real `pytest` |
 |---|---|---|
@@ -617,7 +631,11 @@ once the seed pipeline produces a genuinely green baseline.
 
 - ~~The ~7,500 prebuilt SWE-rebench images are pullable.~~ **RESOLVED
   2026-09-18 by `scripts/probe_images.py`: 4/4 candidates pulled, each with a
-  repository checked out at `/testbed` and a working interpreter.** The images
+  repository checked out at `/testbed` and a working interpreter.** *Narrowed
+  2026-09-19:* "working interpreter" meant only that `python --version`
+  answered. That `python` is conda base and cannot run the repository's tests;
+  use `/opt/conda/envs/testbed/bin/python` (`--python` on `chesterton seed`),
+  and check a new image with `scripts/probe_interpreter.py`. The images
   live on Docker Hub under `swerebench/`, named
   `sweb.eval.x86_64.<owner>_<pr>_<repo>-<n>`, and the reference for any instance
   is in the `docker_image` field of the SWE-rebench dataset on HuggingFace.
