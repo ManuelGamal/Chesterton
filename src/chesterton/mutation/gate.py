@@ -20,6 +20,7 @@ from __future__ import annotations
 import ast
 import io
 import tokenize
+import warnings
 
 from chesterton.mutation.model import Mutant
 
@@ -38,7 +39,15 @@ def _normalised(source: str) -> str | None:
     """
     try:
         tree = ast.parse(source)
-        compile(tree, "<mutant>", "exec", dont_inherit=True)
+        # compile(), unlike ast.parse(), emits compiler-stage SyntaxWarnings
+        # (e.g. `"is" with a literal`). Under a process-wide `-W error` (or
+        # any filter that promotes warnings to errors), one of those would
+        # raise SyntaxError here for code that is perfectly valid — silently
+        # losing a legitimate mutant and mislabelling it "unparseable". Gate
+        # admission must not depend on the warnings filter in effect.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", SyntaxWarning)
+            compile(tree, "<mutant>", "exec", dont_inherit=True)
     except (SyntaxError, ValueError):  # ValueError: source with a NUL byte
         return None
     return ast.dump(tree)

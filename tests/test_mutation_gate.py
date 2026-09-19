@@ -1,3 +1,5 @@
+import warnings
+
 from chesterton.mutation.gate import MutantGate
 from chesterton.mutation.model import Mutant
 
@@ -105,6 +107,26 @@ def test_two_different_mutants_are_both_admitted():
     gate = MutantGate()
     assert gate.admit(a_mutant(mutated_src="x = 2\n")) is True
     assert gate.admit(a_mutant(mutated_src="x = 3\n")) is True
+    assert gate.rejected == {}
+
+
+def test_admission_does_not_depend_on_the_process_warnings_filter():
+    # R3: compile() emits compiler-stage SyntaxWarnings (e.g. `is` with an int
+    # literal) that ast.parse does not. Under a strict warnings filter those
+    # get promoted to SyntaxError, silently losing a legitimate mutant and
+    # mislabelling it "unparseable" -- gate admission must not depend on
+    # whatever warnings filter the process happens to be running under.
+    gate = MutantGate()
+    mutant = a_mutant(
+        original_src="def f(x):\n    if x is 1:\n        return True\n    return False\n",
+        mutated_src="def f(x):\n    if x is 2:\n        return True\n    return False\n",
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        admitted = gate.admit(mutant)
+
+    assert admitted is True
     assert gate.rejected == {}
 
 
