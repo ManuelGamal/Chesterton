@@ -20,3 +20,7 @@ htmlcov/
 .worktrees/
 .claude/
 .superpowers/
+
+# Seed records and run reports name account-specific checkpoints
+/seeds/
+/runs/

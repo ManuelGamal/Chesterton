@@ -16,6 +16,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+from chesterton.covmap.invert import IMPORT_TIME
 from chesterton.filters import is_mutable_source
 from chesterton.models import CoverageMap, Hunk
 
@@ -40,7 +41,10 @@ def _defence(hunk: Hunk, covmap: CoverageMap) -> HunkDefence:
     for line in hunk.lines:
         covering = by_line.get(line, [])
         if covering:
-            tests.update(covering)
+            # An import-time line IS executed, so it is not uncovered. But
+            # import time is not a test anyone can run, so it is not offered
+            # for selection.
+            tests.update(t for t in covering if t != IMPORT_TIME)
         else:
             uncovered.append(line)
 

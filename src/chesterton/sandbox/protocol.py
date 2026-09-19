@@ -41,6 +41,10 @@ class RunResult:
     error: str | None = None
 
 
+class SandboxReadError(RuntimeError):
+    """A file could not be read back from a checkpoint."""
+
+
 def require_tag_when_persisting(disposable: bool, tag: str | None) -> None:
     """Refuse to persist an untagged checkpoint.
 
@@ -82,6 +86,10 @@ class SandboxRunner(Protocol):
         and is required whenever `disposable=False` (ValueError otherwise).
         `timeout` bounds the execution in seconds.
         """
+        ...
+
+    async def read_file(self, checkpoint_id: str, path: str) -> bytes:
+        """Read one file from a PERSISTED checkpoint."""
         ...
 
     async def aclose(self) -> None:

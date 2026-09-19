@@ -254,3 +254,57 @@ async def test_an_error_outside_the_sdk_still_propagates():
 
     with pytest.raises(TypeError, match="a bug in our own code"):
         await a_runner_over(image).run("ckpt", "pytest -q")
+
+from chesterton.sandbox.protocol import SandboxReadError
+
+
+class _ReadableImage:
+    def __init__(self, *, content: bytes = b"", raises: Exception | None = None):
+        self.read_paths: list[str] = []
+        self._content = content
+        self._raises = raises
+
+    async def read(self, path):
+        self.read_paths.append(path)
+        if self._raises is not None:
+            raise self._raises
+        return self._content
+
+
+def a_reader_over(image: _ReadableImage) -> ConTreeSandboxRunner:
+    async def use(ref, strict=False):
+        return image
+
+    runner = ConTreeSandboxRunner(api_key="unused", project_id="project-unused")
+    runner._sdk = SimpleNamespace(images=SimpleNamespace(use=use))
+    return runner
+
+
+def test_read_file_is_part_of_the_protocol_and_a_coroutine():
+    assert inspect.iscoroutinefunction(ConTreeSandboxRunner.read_file)
+    assert "read_file" in dir(SandboxRunner)
+
+
+async def test_read_file_returns_the_bytes_and_uses_forward_slashes():
+    image = _ReadableImage(content=b'{"files": {}}')
+
+    data = await a_reader_over(image).read_file("ckpt", "\\chesterton\\coverage.json")
+
+    assert data == b'{"files": {}}'
+    assert image.read_paths == ["/chesterton/coverage.json"]
+
+
+async def test_an_sdk_read_failure_becomes_a_sandbox_read_error():
+    exceptions = pytest.importorskip("contree_sdk.sdk.exceptions")
+    failure = exceptions.OperationTimedOutError(operation_uuid=UUID(int=1))
+    image = _ReadableImage(raises=failure)
+
+    with pytest.raises(SandboxReadError, match="OperationTimedOutError"):
+        await a_reader_over(image).read_file("ckpt", "/chesterton/run1.txt")
+
+
+async def test_a_non_sdk_error_while_reading_still_propagates():
+    image = _ReadableImage(raises=TypeError("a bug in our own code"))
+
+    with pytest.raises(TypeError, match="a bug in our own code"):
+        await a_reader_over(image).read_file("ckpt", "/x")

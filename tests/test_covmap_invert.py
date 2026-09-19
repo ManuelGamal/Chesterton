@@ -3,6 +3,7 @@ from pathlib import Path
 
 from chesterton.covmap.invert import (
     COVERAGE_CAPTURE_COMMANDS,
+    IMPORT_TIME,
     invert_coverage,
     load_coverage,
 )
@@ -28,8 +29,13 @@ def test_strips_the_phase_suffix_from_context_names():
     )
 
 
-def test_drops_the_empty_context_which_means_no_test():
-    assert invert_coverage(REPORT)["widgets/users.py"].get(8, []) == []
+def test_the_empty_context_is_recorded_as_import_time_not_dropped():
+    # Reverses a Phase 1 ruling on live evidence (2026-09-19). The empty
+    # context is code that ran outside any test, i.e. at import during
+    # collection. Dropping it made nomenclature-284's changed
+    # `from nomenclature.validation import log_error` a tier-0 finding:
+    # "no test executes this line", on a line every test run executes.
+    assert invert_coverage(REPORT)["widgets/users.py"][8] == [IMPORT_TIME]
 
 
 def test_line_numbers_are_integers_not_strings():
