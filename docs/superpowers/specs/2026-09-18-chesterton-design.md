@@ -705,6 +705,17 @@ has no top-level `--version` flag (`python -m crosshair --version` exits 2);
 read `crosshair.__version__` instead. **Phase 2b is justified on these
 numbers.**
 
+**Non-zero exit vs failed operation — MEASURED 2026-09-19.** Raw
+`contree_sdk` against `ubuntu:latest`: `exit 0` and `exit 1` both return an
+image in state `SUCCEEDED`, with `exit_code` 0 and 1 respectively and stdout and
+stderr readable. `sleep 60` under a 5 s timeout **raises**
+`OperationTimedOutError` after 5.6 s. So a killed mutant — tests fail, command
+exits non-zero — is an ordinary result, and an *exception* from `run()` is what
+marks a sandbox `error`. `run()` re-raises on a failed operation rather than
+returning a `FAILED` image, so the adapter must catch the SDK's `ContreeError`
+family around the call; a post-hoc state check on the returned image can never
+fire.
+
 **Survivor noise.** Triage deserves more of the six weeks than the
 visualization does, even though the visualization is what judges remember.
 
