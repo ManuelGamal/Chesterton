@@ -4,6 +4,7 @@ import pytest
 from chesterton.diffing.parse import changed_lines
 from chesterton.github.swebench import (
     SWEBenchError,
+    fetch_swebench_row,
     fetch_swebench_task,
     image_for,
     task_from_row,
@@ -210,6 +211,18 @@ async def test_a_failed_page_is_retried_once():
 
     assert task.pr.number == 7393
     assert len(attempts) == 2
+
+
+async def test_a_raw_row_can_be_read_from_any_dataset():
+    # The agent-patch screen needs UTBoost's rows (augmented tests and their
+    # FAIL_TO_PASS lists), not just a task built from SWE-bench's.
+    boosted = {**ROW, "FAIL_TO_PASS": '["xarray/tests/test_indexes.py::test_x"]'}
+    async with a_client({"Bertsekas/SWE-Bench_Verified_UTBoost": [boosted]}) as http:
+        row = await fetch_swebench_row(
+            "pydata__xarray-7393", client=http,
+            datasets=("Bertsekas/SWE-Bench_Verified_UTBoost",),
+        )
+    assert row["FAIL_TO_PASS"] == boosted["FAIL_TO_PASS"]
 
 
 async def test_a_malformed_instance_id_is_refused_before_any_request():

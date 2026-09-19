@@ -1,0 +1,147 @@
+"""Which resolved agent patches does UTBoost's augmented test show to be wrong?
+
+Reads what scripts/collect_agent_patches.py wrote, then for each distinct
+patch runs ONE disposable sandbox op from the task's SWE-bench image:
+
+  1. apply the agent's source changes;
+  2. apply SWE-bench's ORIGINAL test_patch and run its FAIL_TO_PASS tests.
+     These should pass, because SWE-bench marked the patch resolved. A
+     failure here means this sandbox does not reproduce "resolved", and the
+     patch is set aside, not counted either way;
+  3. swap in UTBoost's AUGMENTED test_patch and run its FAIL_TO_PASS tests.
+
+Passing 2 and failing 3 is the target: an agent patch that passed SWE-bench's
+tests and is wrong. These are the seeds Chesterton is meant to catch.
+
+Only FAIL_TO_PASS is run, not PASS_TO_PASS, to keep each op small. A patch
+that breaks only a PASS_TO_PASS test is under-counted here, so the "wrong"
+set is a lower bound.
+
+Usage:
+    python scripts/screen_agent_patches.py <patch-dir> <instance-id> [...]
+
+Needs NEBIUS_API_KEY and NEBIUS_PROJECT_ID. Costs one sandbox op per distinct
+patch, run at most 24 at a time.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import re
+import shlex
+import sys
+from collections import Counter
+from pathlib import Path
+
+import httpx
+
+from chesterton.execute.pool import SandboxPool
+from chesterton.filters import is_mutable_source
+from chesterton.github.swebench import fetch_swebench_row, image_for
+from chesterton.sandbox.contree import ConTreeSandboxRunner
+
+PYTHON = "/opt/miniconda3/envs/testbed/bin/python"
+UTBOOST = ("Bertsekas/SWE-Bench_Verified_UTBoost", "Bertsekas/SWE-Bench_Lite_UTBoost")
+TIMEOUT_S = 600.0
+
+AGENT, ORIGINAL, AUGMENTED = (
+    "/chesterton/agent.diff",
+    "/chesterton/original_tests.diff",
+    "/chesterton/augmented_tests.diff",
+)
+
+_MARK = re.compile(r"^CHESTERTON_(\w+)=(\S+)$", re.M)
+
+
+def _ids(field) -> list[str]:
+    return json.loads(field) if isinstance(field, str) else list(field)
+
+
+def _files(diff: str) -> list[str]:
+    return [l.split(" b/", 1)[1].strip() for l in diff.splitlines() if l.startswith("diff --git ")]
+
+
+def screen_script(original_f2p: list[str], augmented_f2p: list[str]) -> str:
+    q = shlex.quote
+    py = q(PYTHON)
+    apply = "git apply --whitespace=nowarn"
+    return "\n".join([
+        "cd /testbed",
+        f"{apply} {AGENT} || {{ echo CHESTERTON_APPLY=agent; exit 0; }}",
+        f"{apply} {ORIGINAL} || {{ echo CHESTERTON_APPLY=original; exit 0; }}",
+        f"{py} -m pytest -q -p no:cacheprovider {' '.join(map(q, original_f2p))} "
+        "> /tmp/original.txt 2>&1; echo CHESTERTON_ORIGINAL=$?",
+        f"{apply} -R {ORIGINAL} || {{ echo CHESTERTON_APPLY=revert; exit 0; }}",
+        f"{apply} {AUGMENTED} || {{ echo CHESTERTON_APPLY=augmented; exit 0; }}",
+        f"{py} -m pytest -q -p no:cacheprovider {' '.join(map(q, augmented_f2p))} "
+        "> /tmp/augmented.txt 2>&1; echo CHESTERTON_AUGMENTED=$?",
+        "echo '--- augmented tail'; tail -n 15 /tmp/augmented.txt",
+    ])
+
+
+def classify(error: str | None, stdout: str) -> str:
+    if error is not None:
+        return "sandbox_error"
+    marks = dict(_MARK.findall(stdout))
+    if "APPLY" in marks:
+        return f"apply_failed:{marks['APPLY']}"
+    original, augmented = marks.get("ORIGINAL"), marks.get("AUGMENTED")
+    if original != "0":
+        return "fails_original"  # sandbox does not reproduce "resolved"
+    if augmented == "0":
+        return "passes_augmented"
+    if augmented == "1":
+        return "WRONG"  # passed SWE-bench's tests, fails UTBoost's
+    return f"error:augmented_exit_{augmented}"
+
+
+async def screen(pool, iid: str, patch_dir: Path) -> dict:
+    async with httpx.AsyncClient(timeout=60) as http:
+        original = await fetch_swebench_row(iid, client=http)
+        augmented = await fetch_swebench_row(iid, client=http, datasets=UTBOOST)
+
+    base = await pool.runner.use_image(image_for(iid))
+    script = screen_script(_ids(original["FAIL_TO_PASS"]), _ids(augmented["FAIL_TO_PASS"]))
+    summary = json.loads((patch_dir / iid / "summary.json").read_text(encoding="utf-8"))
+
+    async def one(entry: dict) -> dict:
+        text = (patch_dir / iid / entry["patch"]).read_text(encoding="utf-8")
+        if not any(is_mutable_source(f) for f in _files(text)):
+            return {**entry, "verdict": "no_source_change"}
+        result = await pool.run(base, script, files={
+            AGENT: text, ORIGINAL: original["test_patch"], AUGMENTED: augmented["test_patch"],
+        }, timeout=TIMEOUT_S)
+        return {**entry, "verdict": classify(result.error, result.stdout),
+                "tail": (result.stdout or "")[-1500:], "error": result.error}
+
+    return {"instance": iid, "patches": await asyncio.gather(*(one(e) for e in summary))}
+
+
+async def main(patch_dir: Path, instance_ids: list[str]) -> int:
+    runner = ConTreeSandboxRunner()
+    total = sum(
+        len(json.loads((patch_dir / iid / "summary.json").read_text(encoding="utf-8")))
+        for iid in instance_ids
+    )
+    pool = SandboxPool(runner, op_budget=total)
+    try:
+        for iid in instance_ids:
+            report = await screen(pool, iid, patch_dir)
+            (patch_dir / iid / "screen.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+            counts = Counter(p["verdict"] for p in report["patches"])
+            print(f"\n{iid}: {dict(counts)}")
+            for p in report["patches"]:
+                if p["verdict"] == "WRONG":
+                    print(f"  WRONG  {p['patch']}  passed SWE-bench for {len(p['submissions'])} "
+                          f"submission(s), e.g. {p['submissions'][0]}")
+    finally:
+        await runner.aclose()
+    print(f"\n{pool.ops_used} sandbox ops")
+    return 0
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        sys.exit(__doc__)
+    raise SystemExit(asyncio.run(main(Path(sys.argv[1]), sys.argv[2:])))

@@ -148,12 +148,13 @@ async def _page(client: httpx.AsyncClient, dataset: str, offset: int) -> dict:
     )
 
 
-async def fetch_swebench_task(
+async def fetch_swebench_row(
     instance_id: str,
     *,
     client: httpx.AsyncClient,
     datasets: Sequence[str] = DATASETS,
-) -> SWEBenchTask:
+) -> dict:
+    """The raw dataset row for one instance, from the first dataset holding it."""
     if not _INSTANCE_ID.match(instance_id):
         raise ValueError(f"not a SWE-bench instance id: {instance_id!r}")
 
@@ -164,9 +165,19 @@ async def fetch_swebench_task(
             rows = page.get("rows", [])
             for item in rows:
                 if item["row"]["instance_id"] == instance_id:
-                    return task_from_row(item["row"])
+                    return item["row"]
             offset += PAGE
             if not rows or offset >= page.get("num_rows_total", 0):
                 break
 
     raise SWEBenchError(f"{instance_id} not found in {', '.join(datasets)}")
+
+
+async def fetch_swebench_task(
+    instance_id: str,
+    *,
+    client: httpx.AsyncClient,
+    datasets: Sequence[str] = DATASETS,
+) -> SWEBenchTask:
+    row = await fetch_swebench_row(instance_id, client=client, datasets=datasets)
+    return task_from_row(row)
