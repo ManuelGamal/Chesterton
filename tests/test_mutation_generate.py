@@ -4,6 +4,7 @@ from dataclasses import replace
 from chesterton.models import Hunk
 from chesterton.mutation.generate import MUTANT_BUDGET, generate
 from chesterton.mutation.model import Mutant
+from chesterton.mutation.operators import apply_candidate, find_candidates
 
 GUARDED = '''\
 @rate_limit(10)
@@ -50,6 +51,21 @@ def test_every_generated_mutant_passed_the_gate():
     mutants, _ = generate([Hunk("pay.py", 1, 5)], {"pay.py": GUARDED})
     for mutant in mutants:
         ast.parse(mutant.mutated_src)
+
+
+def test_a_deterministic_no_op_is_gated_out():
+    # remove_cleanup on an already-empty finally renders a byte-identical
+    # file. Ungated, that is a guaranteed survivor — a fabricated finding —
+    # and every other deterministic fixture happens to mutate for real.
+    source = "try:\n    f()\nfinally:\n    pass\n"
+    [candidate] = find_candidates(source, [1, 2, 3, 4])
+    assert candidate.operator == "remove_cleanup"
+    assert apply_candidate(source, candidate) == source  # the premise
+
+    mutants, rejected = generate([Hunk("cleanup.py", 1, 4)], {"cleanup.py": source})
+
+    assert mutants == []
+    assert rejected == {"unchanged": 1}
 
 
 def test_the_budget_is_respected():
