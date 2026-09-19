@@ -916,6 +916,57 @@ instances UTBoost identified as having test gaps yields a headline number with
 external ground truth, which is far stronger than a self-reported mutation
 score.
 
+### Pre-registered protocol — REGISTERED 2026-09-20, before any run
+
+Written and committed before the study, so the metric cannot be fitted to the
+data. The analysis is code, not prose: `chesterton/benchmark/analysis.py`,
+with its tests. Changing any of this after a run begins makes a NEW study,
+and the change must be recorded here as one.
+
+**Question.** Among agent patches that all passed SWE-bench's tests, does
+Chesterton flag the ones UTBoost proves wrong more often than matched ones
+UTBoost's tests accept?
+
+**Population.** The 22 non-Django UTBoost instances (Django's suite is not
+pytest). For each, every patch SWE-bench's public submissions resolved,
+deduplicated by edit (`scripts/collect_agent_patches.py`), then screened in
+one sandbox op each (`scripts/screen_agent_patches.py`):
+- **wrong**: passes SWE-bench's original FAIL_TO_PASS, fails UTBoost's;
+- **control**: passes both.
+A patch whose original tests do not pass in our sandbox is excluded, not
+counted either way.
+
+**Pairing.** Each wrong patch is matched to a control from the SAME task,
+nearest by changed source lines, without replacement, ties by name
+(`match_controls`). Unmatched wrong patches are reported and excluded.
+
+**Chesterton configuration.** Identical for both arms: default mutant budget,
+Lightning proposals on, ddmin on, scope = the task's own test files, one run
+per patch.
+
+**Outcomes.**
+- FLAGGED: at least one surviving mutant or tier-0 finding. Provable no-ops
+  never get this far; the gate rejects them (two sound rules only — an added
+  `pass`, and inert unreachable code — everything else stays a survivor).
+- RATE: (survivors + tier-0) per changed executable line, since agent patches
+  add code and raw counts partly measure volume.
+
+**Hypotheses, one-sided, alpha 0.05.**
+- **H1 (primary):** wrong patches are flagged more often than their controls.
+  Exact McNemar on discordant pairs.
+- **H2 (secondary):** within a pair, the wrong patch's rate is higher. Exact
+  sign test, ties dropped.
+
+**Reported whatever the result**, including a null or a reversal, with the
+per-task breakdown, the unmatched and excluded counts, and every survivor
+that is noise rather than a real gap.
+
+**Known limits, stated in advance.** Controls are "correct" only against
+UTBoost's FAIL_TO_PASS, so some are probably wrong too, which biases towards
+the null. Model proposals vary between runs and each patch is run once.
+Tasks contribute unequally. `-k` selection for sympy-style tasks can pull in
+extra tests.
+
 ## 18. Schedule
 
 | Week | Focus |
