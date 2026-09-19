@@ -825,6 +825,51 @@ SWE-bench's tests and were wrong. That list is not published, but it is
 reconstructible from SWE-bench's `experiments` submissions: resolved patches
 that fail UTBoost's augmented test.
 
+### Known-wrong agent patches — MEASURED 2026-09-19
+
+**This is the first evidence for the §17 benchmark claim.** Resolved agent
+patches for matplotlib-23314 were collected from SWE-bench's public
+submissions (`scripts/collect_agent_patches.py`): 131 resolving submissions,
+75 distinct patches, of which only 20 submissions match gold. Each was screened
+in one sandbox op (`scripts/screen_agent_patches.py`): pass SWE-bench's
+original FAIL_TO_PASS, then UTBoost's augmented FAIL_TO_PASS. **13 distinct
+patches, from 14 leaderboard submissions, passed SWE-bench and fail
+UTBoost.** Every applied patch reproduced "resolved" in our sandbox
+(`fails_original` = 0), so the environment is faithful. xarray-7393 yielded 0
+wrong patches under FAIL_TO_PASS alone, a lower bound, and 10 of its patches
+failed `git apply` (open).
+
+All 13 share one mistake. Instead of the gold fix (a guard in `draw()`:
+don't draw when invisible), they override `set_visible()` to push visibility
+into parts of the axes. The original test hides an *empty* 3D axes, so that
+passes. UTBoost's test draws scatter points first, and they still render.
+
+Chesterton on three of them, against the same task's original tests:
+
+| patch | UTBoost | killed / survived | what the survivors say |
+|---|---|---|---|
+| gold | correct | 5 / 1 | the one survivor can never be caught (`not x` to `x is False`) |
+| deepswerl r2eagent | **wrong** | 4 / 10 | `super().set_visible(visible)` to `(True)` survives |
+| RepoGraph + GPT-4o | **wrong** | 9 / 9 | the same, plus `spine.set_visible(b)` to `pass` survives |
+| Agentless 1.5 + Claude 3.5 Sonnet | **wrong** | 6 / 13 | the same, plus **tier 0: line 1160 `artist.set_visible(b)`, executed by no test** |
+
+**What this establishes.** On all three wrong patches, Chesterton reports
+that the axes' own visibility flag has no observable effect: the patch can
+ignore its argument and no test fails. That is precisely the defect. On
+Agentless, tier 0 names the exact line that hides drawn content and says no
+test runs it; UTBoost's added test is the one that would. The gold patch
+shows none of this. An earlier prediction in this project, that mutation
+could not surface a *missing*-behaviour bug, was wrong: it surfaces it as an
+argument or line whose effect nothing observes.
+
+**Honest limits.** n = 3 wrong patches, one task. Some survivors are noise:
+the `stale` redraw flag (real but low-risk) and uncatchable mutants
+(`stale = 1`). The score gap (83% gold against 29-50% wrong) is partly
+volume, because agent patches add more code and so more mutants. The claim to
+make is the *content* of the survivors, not the score. Changed comment and
+blank lines produced model mutants of `# Call the base class`, now fixed by
+building hunks only from executable lines (Agentless: 10 hunks to 5).
+
 **Survivor noise.** Triage deserves more of the six weeks than the
 visualization does, even though the visualization is what judges remember.
 
