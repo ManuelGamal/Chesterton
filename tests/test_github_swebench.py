@@ -7,6 +7,7 @@ from chesterton.github.swebench import (
     fetch_swebench_task,
     image_for,
     task_from_row,
+    with_patch,
 )
 
 GOLD = (
@@ -65,6 +66,59 @@ def test_a_gold_patch_without_a_final_newline_still_joins_into_one_diff():
         "xarray/core/indexing.py",
         "xarray/tests/test_indexes.py",
     }
+
+
+AGENT = (
+    "diff --git a/xarray/core/indexing.py b/xarray/core/indexing.py\n"
+    "--- a/xarray/core/indexing.py\n"
+    "+++ b/xarray/core/indexing.py\n"
+    "@@ -1,2 +1,3 @@\n"
+    " def f(dtype):\n"
+    "+    dtype = dtype or 1\n"
+    "     return 2\n"
+    # Agents often write tests too. SWE-bench's harness restores the files
+    # the test_patch touches before applying it, so these edits never count.
+    "diff --git a/xarray/tests/test_indexes.py b/xarray/tests/test_indexes.py\n"
+    "--- a/xarray/tests/test_indexes.py\n"
+    "+++ b/xarray/tests/test_indexes.py\n"
+    "@@ -1 +1,2 @@\n"
+    " import xarray\n"
+    "+import pytest\n"
+)
+
+
+def test_an_agent_patch_replaces_the_gold_patch():
+    task = with_patch(task_from_row(ROW), AGENT, label="agent-x")
+
+    assert "dtype = dtype or 1" in task.pr.diff
+    assert "if dtype is None" not in task.pr.diff
+    assert "agent-x" in task.pr.title
+
+
+def test_the_original_test_patch_stays_the_oracle():
+    task = with_patch(task_from_row(ROW), AGENT, label="agent-x")
+
+    assert "def test_stack_keeps_dtype" in task.pr.diff
+    assert task.test_paths == ("xarray/tests/test_indexes.py",)
+
+
+def test_agent_edits_to_the_tasks_test_files_are_dropped_as_the_harness_does():
+    task = with_patch(task_from_row(ROW), AGENT, label="agent-x")
+
+    assert "+import pytest" not in task.pr.diff
+    # One edit per file, so the combined diff applies cleanly.
+    assert task.pr.diff.count("+++ b/xarray/tests/test_indexes.py") == 1
+    assert set(changed_lines(task.pr.diff)) == {
+        "xarray/core/indexing.py",
+        "xarray/tests/test_indexes.py",
+    }
+
+
+def test_an_agent_patch_with_no_source_change_is_refused():
+    only_tests = AGENT[AGENT.index("diff --git a/xarray/tests"):]
+
+    with pytest.raises(ValueError, match="no source"):
+        with_patch(task_from_row(ROW), only_tests, label="agent-x")
 
 
 def test_the_image_follows_swebenchs_naming():

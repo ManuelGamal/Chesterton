@@ -122,6 +122,47 @@ def test_explicit_tests_override_the_swebench_scope(tmp_path, demo_seed):
     assert seed.test_paths == ("tests/test_other.py",)
 
 
+AGENT_PATCH = (
+    "diff --git a/pay.py b/pay.py\n"
+    "--- a/pay.py\n"
+    "+++ b/pay.py\n"
+    "@@ -1,2 +1,3 @@\n"
+    " def charge(amount):\n"
+    "+    amount = amount or 0\n"
+    "     return amount\n"
+)
+
+
+def test_seed_reviews_an_agent_patch_given_with_patch(tmp_path, demo_seed):
+    from dataclasses import replace
+
+    patch_file = tmp_path / "agentless.diff"
+    patch_file.write_text(AGENT_PATCH, encoding="utf-8")
+    out = tmp_path / "demo.json"
+
+    async def fetch_swebench(instance_id):
+        task = a_swebench_task(demo_seed)
+        return replace(task, test_patch="", test_paths=("tests/test_pay.py",))
+
+    code = main(
+        ["seed", "--swebench", "acme__pay-1", "--patch", str(patch_file),
+         "--slug", "demo", "--out", str(out)],
+        runner_factory=a_seedable_runner, fetch_swebench=fetch_swebench,
+    )
+
+    assert code == 0
+    seed = SeedRecord.from_json(out.read_text(encoding="utf-8"))
+    assert "amount = amount or 0" in seed.pr.diff
+    assert "agentless" in seed.pr.title  # which patch this seed reviews
+
+
+def test_patch_needs_swebench():
+    # A GitHub PR has no separate test patch to keep as the oracle.
+    with pytest.raises(SystemExit):
+        main(["seed", "--pr", "https://github.com/acme/pay/pull/1", "--image", "x",
+              "--patch", "a.diff", "--slug", "demo", "--out", "x.json"])
+
+
 def test_an_unreachable_dataset_exits_1_with_the_reason(tmp_path, capsys):
     from chesterton.github.swebench import SWEBenchError
 

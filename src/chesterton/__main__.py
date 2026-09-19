@@ -68,6 +68,13 @@ def build_parser() -> argparse.ArgumentParser:
         "its original test_patch, its image and its test files by default",
     )
     seed.add_argument(
+        "--patch",
+        type=Path,
+        metavar="FILE",
+        help="with --swebench: review this patch (e.g. an agent's) instead of "
+        "the gold patch; the task's original tests stay the oracle",
+    )
+    seed.add_argument(
         "--image",
         help="image ref, e.g. docker://...; required with --pr, defaults to "
         "SWE-bench's own image with --swebench",
@@ -138,13 +145,21 @@ def _summarise(report: RunReport) -> str:
 
 async def _seed(args, runner_factory, fetch, fetch_swebench) -> int:
     if args.swebench:
-        from chesterton.github.swebench import SWEBenchError
+        from chesterton.github.swebench import SWEBenchError, with_patch
 
         try:
             task = await fetch_swebench(args.swebench)
         except SWEBenchError as exc:
             print(f"could not fetch {args.swebench}: {exc}", file=sys.stderr)
             return 1
+        if args.patch:
+            try:
+                task = with_patch(
+                    task, args.patch.read_text(encoding="utf-8"), label=args.patch.stem
+                )
+            except (OSError, ValueError) as exc:
+                print(f"cannot review {args.patch}: {exc}", file=sys.stderr)
+                return 1
         pr = task.pr
         image = args.image or task.image
         # SWE-bench's own scope unless overridden: the test_patch's files.
@@ -209,6 +224,9 @@ def main(
     if args.command == "seed":
         if args.pr and not args.image:
             parser.error("--image is required with --pr")
+        if args.patch and not args.swebench:
+            parser.error("--patch needs --swebench: only a SWE-bench task has "
+                         "separate original tests to keep as the oracle")
         return asyncio.run(
             _seed(
                 args, runner_factory,

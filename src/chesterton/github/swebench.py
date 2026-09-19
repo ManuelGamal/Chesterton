@@ -20,11 +20,12 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import httpx
 from unidiff import PatchSet
 
+from chesterton.filters import is_mutable_source
 from chesterton.models import PullRequest
 from chesterton.paths import normalise_path
 
@@ -50,6 +51,8 @@ class SWEBenchTask:
     pr: PullRequest
     test_paths: tuple[str, ...]
     image: str
+    #: The task's original tests: the oracle, whatever patch is under review.
+    test_patch: str = ""
 
 
 def image_for(instance_id: str) -> str:
@@ -89,7 +92,34 @@ def task_from_row(row: dict) -> SWEBenchTask:
         pr=pr,
         test_paths=_files(row["test_patch"]),
         image=image_for(instance_id),
+        test_patch=row["test_patch"],
     )
+
+
+def with_patch(task: SWEBenchTask, patch: str, *, label: str) -> SWEBenchTask:
+    """The same task, reviewing a different patch, typically an agent's.
+
+    This is the thesis case: UTBoost found 345 agent patches that passed
+    SWE-bench's tests and were wrong. The task's ORIGINAL test_patch stays
+    the oracle, because it is the suite those patches passed.
+
+    Edits the patch makes to the files test_patch touches are dropped.
+    SWE-bench's harness restores those files before applying test_patch, so
+    such edits never counted there. Keeping both would give `git apply` two
+    conflicting edits of one file.
+    """
+    oracle = set(task.test_paths)
+    kept = [pf for pf in PatchSet(patch) if normalise_path(pf.path) not in oracle]
+    if not any(is_mutable_source(normalise_path(pf.path)) for pf in kept):
+        raise ValueError(
+            f"the patch has no source change to review once the task's test "
+            f"files are set aside ({label})"
+        )
+    body = "".join(str(pf) for pf in kept)
+    if not body.endswith("\n"):
+        body += "\n"
+    pr = replace(task.pr, title=f"{task.instance_id}: {label}", diff=body + task.test_patch)
+    return replace(task, pr=pr)
 
 
 async def _page(client: httpx.AsyncClient, dataset: str, offset: int) -> dict:
