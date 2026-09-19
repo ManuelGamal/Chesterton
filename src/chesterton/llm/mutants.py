@@ -5,8 +5,12 @@ volume, low judgement. Thinking is disabled, so the reply should be JSON with
 no preamble — but `parse_mutants` tolerates one anyway, because a single stray
 sentence must not cost a whole batch.
 
-A malformed reply yields no mutants rather than raising. The deterministic
-operators are the floor; the model is upside.
+A malformed or truncated reply yields no mutants rather than raising — one
+bad reply must never abort a run over hundreds of hunks. But it is not
+silent: every call returns a `Proposal` naming why it produced nothing, so a
+run in which every model call failed cannot pass for a run in which the model
+simply had nothing to propose. The deterministic operators are the floor; the
+model is upside.
 
 `Mutant.mutated_src` is ALWAYS the complete module, from every generator. The
 model is shown only the hunk and replies with replacement text for those
@@ -22,8 +26,9 @@ Parameters named `module_src` are the whole file; `hunk_src` is the fragment.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 
-from chesterton.llm.client import EXECUTION_MODEL
+from chesterton.llm.client import EXECUTION_MODEL, TruncatedResponse
 from chesterton.mutation.model import Mutant
 
 #: Every model mutant's operator, whatever label the reply claims. Ranking
@@ -32,6 +37,24 @@ from chesterton.mutation.model import Mutant
 #: own proposal delete_guard would outrank every one of them and mislabel the
 #: finding it produced; it does not get to grade its own work.
 MODEL_OPERATOR = "semantic"
+
+#: The reply hit max_tokens before finishing; its content is not an answer.
+TRUNCATED = "truncated"
+#: The reply was not the JSON asked for, or none of its entries were usable.
+MALFORMED = "malformed"
+
+
+@dataclass(frozen=True)
+class Proposal:
+    """What one model call produced.
+
+    `failure` is None for a well-formed reply — including one that proposed
+    nothing, which is an answer. Otherwise it names why the reply yielded no
+    mutants (TRUNCATED or MALFORMED), so a caller can count model failures.
+    """
+
+    mutants: list[Mutant]
+    failure: str | None = None
 
 _PROMPT = """\
 You are helping audit a pull request by proposing small, plausible mutations \
@@ -130,18 +153,19 @@ def _extract_json(reply: str) -> dict | None:
 
 def parse_mutants(
     reply: str, *, file: str, start_line: int, end_line: int, module_src: str
-) -> list[Mutant]:
+) -> Proposal:
     """Turn a model reply for lines start..end into whole-module mutants."""
     parsed = _extract_json(reply)
-    if parsed is None:
-        return []
+    if parsed is None or "mutants" not in parsed:
+        return Proposal([], failure=MALFORMED)
 
-    entries = parsed.get("mutants")
+    entries = parsed["mutants"]
+    if entries is None:
+        # A model with nothing to propose may send `"mutants": null`. That is
+        # an answer, not a failure — but iterating it would raise.
+        return Proposal([])
     if not isinstance(entries, list):
-        # A model with nothing to propose may send `"mutants": null`. Iterating
-        # that raises, which would abort a run over hundreds of hunks for a
-        # reply that simply said "nothing here".
-        return []
+        return Proposal([], failure=MALFORMED)
 
     mutants: list[Mutant] = []
     for entry in entries:
@@ -162,17 +186,26 @@ def parse_mutants(
                 source="llm",
             )
         )
-    return mutants
+    if entries and not mutants:
+        return Proposal([], failure=MALFORMED)
+    return Proposal(mutants)
 
 
 async def propose(
     client, *, file: str, module_src: str, start_line: int, end_line: int
-) -> list[Mutant]:
-    reply = await client.complete(
-        build_prompt(file, _hunk(module_src, start_line, end_line), start_line, end_line),
-        model=EXECUTION_MODEL,
-        max_tokens=2048,
+) -> Proposal:
+    prompt = build_prompt(
+        file, _hunk(module_src, start_line, end_line), start_line, end_line
     )
+    try:
+        reply = await client.complete(
+            prompt, model=EXECUTION_MODEL, max_tokens=2048
+        )
+    except TruncatedResponse:
+        # An ordinary outcome, not an adversarial one: the prompt asks for up
+        # to four replacement blocks under a fixed max_tokens. Anything else
+        # the client raises is not a bad reply, and still propagates.
+        return Proposal([], failure=TRUNCATED)
     return parse_mutants(
         reply,
         file=file,

@@ -1,6 +1,16 @@
 import ast
+from collections import Counter
 
-from chesterton.llm.mutants import build_prompt, parse_mutants, propose
+import pytest
+
+from chesterton.llm.client import TruncatedResponse
+from chesterton.llm.mutants import (
+    MALFORMED,
+    TRUNCATED,
+    build_prompt,
+    parse_mutants,
+    propose,
+)
 from chesterton.mutation.gate import MutantGate
 from chesterton.mutation.generate import generate
 
@@ -45,12 +55,14 @@ DEDENTED_REPLY = (
 class _ScriptedClient:
     """Stands in for NemotronClient; no network in unit tests."""
 
-    def __init__(self, reply: str):
+    def __init__(self, reply: str | Exception):
         self.reply = reply
         self.prompts: list[str] = []
 
     async def complete(self, prompt: str, *, model: str, max_tokens: int) -> str:
         self.prompts.append(prompt)
+        if isinstance(self.reply, Exception):
+            raise self.reply
         return self.reply
 
 
@@ -73,9 +85,11 @@ def test_well_formed_mutants_are_parsed():
         '{"mutants": [{"mutated_src": "def charge(amount):\\n    pass\\n",'
         ' "rationale": "removed the guard", "operator": "semantic"}]}'
     )
-    mutants = parse_mutants(
+    proposal = parse_mutants(
         reply, file="pay.py", start_line=1, end_line=3, module_src=HUNK
     )
+    mutants = proposal.mutants
+    assert proposal.failure is None
     assert len(mutants) == 1
     assert mutants[0].source == "llm"
     assert mutants[0].file == "pay.py"
@@ -88,32 +102,49 @@ def test_a_reply_with_leading_prose_still_parses():
     reply = 'Here you go:\n{"mutants": [{"mutated_src": "x = 1\\n",'
     reply += ' "rationale": "r", "operator": "semantic"}]}'
     assert len(parse_mutants(reply, file="a.py", start_line=1, end_line=1,
-                             module_src="y = 2\n")) == 1
+                             module_src="y = 2\n").mutants) == 1
 
 
 def test_malformed_json_yields_no_mutants_rather_than_raising():
-    # One bad reply must not abort a run over hundreds of hunks.
-    assert parse_mutants("not json at all", file="a.py", start_line=1,
-                         end_line=1, module_src="x = 1\n") == []
+    # One bad reply must not abort a run over hundreds of hunks — but it must
+    # say so, or a run of failures reads like a run of silence.
+    proposal = parse_mutants("not json at all", file="a.py", start_line=1,
+                             end_line=1, module_src="x = 1\n")
+    assert proposal.mutants == []
+    assert proposal.failure == MALFORMED
 
 
 def test_entries_missing_mutated_src_are_skipped():
     reply = '{"mutants": [{"rationale": "no code"}, {"mutated_src": "x = 9\\n"}]}'
-    mutants = parse_mutants(reply, file="a.py", start_line=1, end_line=1,
-                            module_src="x = 1\n")
-    assert len(mutants) == 1
-    assert mutants[0].mutated_src == "x = 9\n"
+    proposal = parse_mutants(reply, file="a.py", start_line=1, end_line=1,
+                             module_src="x = 1\n")
+    assert [m.mutated_src for m in proposal.mutants] == ["x = 9\n"]
+    assert proposal.failure is None
 
 
-def test_a_null_mutants_key_yields_no_mutants_rather_than_raising():
-    # A model with nothing to propose may legitimately send this.
-    assert parse_mutants('{"mutants": null}', file="a.py", start_line=1,
-                         end_line=1, module_src="x = 1\n") == []
+def test_a_reply_whose_every_entry_is_unusable_is_a_failure():
+    reply = '{"mutants": [{"rationale": "no code"}, "stray"]}'
+    proposal = parse_mutants(reply, file="a.py", start_line=1, end_line=1,
+                             module_src="x = 1\n")
+    assert proposal.mutants == []
+    assert proposal.failure == MALFORMED
 
 
-def test_a_non_list_mutants_key_yields_no_mutants_rather_than_raising():
-    assert parse_mutants('{"mutants": 5}', file="a.py", start_line=1,
-                         end_line=1, module_src="x = 1\n") == []
+@pytest.mark.parametrize("reply", ['{"mutants": null}', '{"mutants": []}'])
+def test_an_explicit_nothing_to_propose_is_an_answer_not_a_failure(reply):
+    # A model with nothing to propose may legitimately send either.
+    proposal = parse_mutants(reply, file="a.py", start_line=1, end_line=1,
+                             module_src="x = 1\n")
+    assert proposal.mutants == []
+    assert proposal.failure is None
+
+
+@pytest.mark.parametrize("reply", ['{"mutants": 5}', '{"proposals": []}'])
+def test_a_reply_without_a_mutants_list_is_malformed_not_raised(reply):
+    proposal = parse_mutants(reply, file="a.py", start_line=1, end_line=1,
+                             module_src="x = 1\n")
+    assert proposal.mutants == []
+    assert proposal.failure == MALFORMED
 
 
 def test_the_model_cannot_name_its_own_operator():
@@ -127,7 +158,7 @@ def test_the_model_cannot_name_its_own_operator():
 
     [mutant] = parse_mutants(
         reply, file="a.py", start_line=1, end_line=1, module_src="x = 1\n"
-    )
+    ).mutants
 
     assert mutant.operator == "semantic"
 
@@ -139,7 +170,7 @@ def test_an_indented_reply_is_spliced_into_the_whole_module_and_admitted():
     [mutant] = parse_mutants(
         INDENTED_REPLY, file="pay.py", start_line=GUARD_START,
         end_line=GUARD_END, module_src=MODULE,
-    )
+    ).mutants
 
     assert MutantGate().admit(mutant) is True
     ast.parse(mutant.mutated_src)
@@ -161,7 +192,7 @@ def test_a_dedented_reply_is_rejected_not_admitted():
     [mutant] = parse_mutants(
         DEDENTED_REPLY, file="pay.py", start_line=GUARD_START,
         end_line=GUARD_END, module_src=MODULE,
-    )
+    ).mutants
 
     gate = MutantGate()
     assert gate.admit(mutant) is False
@@ -174,7 +205,7 @@ def test_the_splice_keeps_the_modules_crlf_line_endings():
     [mutant] = parse_mutants(
         INDENTED_REPLY, file="pay.py", start_line=GUARD_START,
         end_line=GUARD_END, module_src=crlf,
-    )
+    ).mutants
 
     assert "\n" not in mutant.mutated_src.replace("\r\n", "")
     assert mutant.mutated_src.count("\r\n") == crlf.count("\r\n")
@@ -186,7 +217,7 @@ def test_the_splice_keeps_a_missing_final_newline_missing():
 
     [mutant] = parse_mutants(
         reply, file="f.py", start_line=2, end_line=2, module_src=module
-    )
+    ).mutants
 
     assert mutant.mutated_src == "def f(x):\n    return x - 1"
 
@@ -201,7 +232,7 @@ async def test_propose_shows_the_hunk_indented_and_its_mutants_survive_generate(
         start_line=GUARD_START, end_line=GUARD_END,
     )
     mutants, rejected = generate(
-        [], {"pay.py": MODULE}, llm_mutants=proposed
+        [], {"pay.py": MODULE}, llm_mutants=proposed.mutants
     )
 
     [prompt] = client.prompts
@@ -218,7 +249,51 @@ async def test_a_dedented_proposal_is_rejected_by_generate():
         start_line=GUARD_START, end_line=GUARD_END,
     )
 
-    mutants, rejected = generate([], {}, llm_mutants=proposed)
+    mutants, rejected = generate([], {}, llm_mutants=proposed.mutants)
 
     assert mutants == []
     assert rejected == {"unparseable": 1}
+
+
+async def test_a_truncated_reply_yields_nothing_and_does_not_raise():
+    # With max_tokens fixed and up to four replacement blocks requested,
+    # truncation is ordinary. Raising here aborted a fan-out over every hunk.
+    client = _ScriptedClient(TruncatedResponse("hit max_tokens"))
+
+    proposal = await propose(
+        client, file="pay.py", module_src=MODULE,
+        start_line=GUARD_START, end_line=GUARD_END,
+    )
+
+    assert proposal.mutants == []
+    assert proposal.failure == TRUNCATED
+
+
+async def test_propose_swallows_only_truncation():
+    # Anything else the client raises is not a bad reply; hiding it would
+    # turn a broken client into a quiet run with no model mutants.
+    client = _ScriptedClient(RuntimeError("connection refused"))
+
+    with pytest.raises(RuntimeError, match="connection refused"):
+        await propose(
+            client, file="pay.py", module_src=MODULE,
+            start_line=GUARD_START, end_line=GUARD_END,
+        )
+
+
+async def test_a_run_of_failed_replies_is_distinguishable_from_a_run_of_silence():
+    # Before, both of these runs produced no mutants and an empty rejected
+    # dict: a model tier that failed on every call looked exactly like one
+    # that had nothing to say.
+    async def run(reply: str) -> Counter:
+        client = _ScriptedClient(reply)
+        proposals = [
+            await propose(client, file="pay.py", module_src=MODULE,
+                          start_line=line, end_line=line)
+            for line in (7, 8, 10)
+        ]
+        assert all(p.mutants == [] for p in proposals)
+        return Counter(p.failure for p in proposals)
+
+    assert await run("I could not produce JSON, sorry.") == Counter({MALFORMED: 3})
+    assert await run('{"mutants": []}') == Counter({None: 3})
