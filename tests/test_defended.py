@@ -69,6 +69,26 @@ def test_findings_exclude_hunk_lines_the_pull_request_never_changed():
     assert findings == [("users.py", 8)]
 
 
+def test_non_python_and_test_files_yield_no_findings():
+    # A README has no coverage to find, so without the filter every changed
+    # line of it became a confident "no test defends this" finding. The .py
+    # hunk in the same call must still report its own uncovered line.
+    findings = uncovered_findings(
+        [
+            Hunk("README.md", 1, 5),
+            Hunk("tests/test_users.py", 1, 2),
+            Hunk("users.py", 8, 8),
+        ],
+        COVMAP,
+        {
+            "README.md": [1, 3, 5],
+            "tests/test_users.py": [1, 2],
+            "users.py": [8],
+        },
+    )
+    assert findings == [("users.py", 8)]
+
+
 def test_tests_are_selected_per_hunk_not_unioned_across_hunks():
     # Each mutant targets ONE hunk and must run only that hunk's tests.
     assert covering_tests(Hunk("users.py", 2, 2), COVMAP) == [

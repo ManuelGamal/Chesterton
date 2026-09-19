@@ -16,6 +16,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+from chesterton.filters import is_mutable_source
 from chesterton.models import CoverageMap, Hunk
 
 
@@ -69,11 +70,17 @@ def uncovered_findings(
     meaningful to work on. Findings must not inherit that width: a
     continuation line the author never touched, which coverage.py cannot even
     record, is not evidence of anything. Intersect with the changed set.
+
+    Only mutable sources can carry a finding. A README or a lockfile has no
+    coverage to find, so every changed line of it would read as "no test
+    defends this" — fabricated evidence. A test file is not code the suite
+    defends; it is the suite.
     """
     changed_by_file = {file: set(lines) for file, lines in changed.items()}
+    sources = [hunk for hunk in hunks if is_mutable_source(hunk.file)]
     return [
         (defence.hunk.file, line)
-        for defence in defended_hunks(hunks, covmap)
+        for defence in defended_hunks(sources, covmap)
         for line in defence.uncovered_lines
         if line in changed_by_file.get(defence.hunk.file, set())
     ]
