@@ -50,5 +50,22 @@ def invert_coverage(report: dict) -> CoverageMap:
     return covmap
 
 
+def executable_lines(report: dict) -> dict[str, list[int]]:
+    """Per file, every line coverage.py treats as a statement.
+
+    That is executed_lines plus missing_lines. Any other line (a closing
+    bracket, a blank, a comment) has no bytecode, so coverage can never
+    record it as run. Live on xarray-7393 (2026-09-19), a changed closing `)`
+    was reported as a tier-0 finding for exactly that reason.
+    """
+    return {
+        normalise_path(path): sorted(
+            set(file_report.get("executed_lines", []))
+            | set(file_report.get("missing_lines", []))
+        )
+        for path, file_report in report.get("files", {}).items()
+    }
+
+
 def load_coverage(path: Path) -> CoverageMap:
     return invert_coverage(json.loads(Path(path).read_text()))

@@ -4,6 +4,7 @@ from pathlib import Path
 from chesterton.covmap.invert import (
     COVERAGE_CAPTURE_COMMANDS,
     IMPORT_TIME,
+    executable_lines,
     invert_coverage,
     load_coverage,
 )
@@ -36,6 +37,18 @@ def test_the_empty_context_is_recorded_as_import_time_not_dropped():
     # `from nomenclature.validation import log_error` a tier-0 finding:
     # "no test executes this line", on a line every test run executes.
     assert invert_coverage(REPORT)["widgets/users.py"][8] == [IMPORT_TIME]
+
+
+def test_executable_lines_are_the_executed_and_the_missing_statements():
+    # A line in neither set (a closing bracket, a blank, a comment) has no
+    # bytecode, so coverage cannot record it either way.
+    report = {"files": {"pkg\\a.py": {
+        "contexts": {"1": ["t::x|run"]},
+        "executed_lines": [1, 4],
+        "missing_lines": [7],
+    }}}
+
+    assert executable_lines(report) == {"pkg/a.py": [1, 4, 7]}
 
 
 def test_line_numbers_are_integers_not_strings():

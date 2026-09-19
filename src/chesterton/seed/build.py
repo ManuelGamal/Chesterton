@@ -18,7 +18,7 @@ import shlex
 from collections.abc import Sequence
 from datetime import datetime, timezone
 
-from chesterton.covmap.invert import invert_coverage
+from chesterton.covmap.invert import executable_lines, invert_coverage
 from chesterton.diffing.parse import changed_lines
 from chesterton.filters import is_mutable_source
 from chesterton.models import PullRequest
@@ -187,6 +187,10 @@ async def build_seed(
         relative_to_workdir(path, workdir): lines
         for path, lines in invert_coverage(report).items()
     }
+    executable = {
+        relative_to_workdir(path, workdir): lines
+        for path, lines in executable_lines(report).items()
+    }
 
     sources: dict[str, str] = {}
     for file in sorted(changed_lines(pr.diff)):
@@ -209,4 +213,5 @@ async def build_seed(
         sources=sources,
         built_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         test_paths=tuple(test_paths),
+        executable=executable,
     )

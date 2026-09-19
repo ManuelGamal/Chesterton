@@ -36,7 +36,9 @@ COVERAGE = {
                 "2": [f"{T_CHARGE}|run"],
                 "3": [f"{T_FLAKY}|run"],
                 "4": [f"{T_CHARGE}|run"],
-            }
+            },
+            "executed_lines": [1, 2, 3, 4],
+            "missing_lines": [],
         }
     }
 }
@@ -189,6 +191,20 @@ async def test_the_scope_is_recorded_so_run_time_uses_it_too(demo_seed):
 
     assert seed.test_paths == SCOPE
     assert SeedRecord.from_json(seed.to_json()).test_paths == SCOPE
+
+
+async def test_the_seed_records_which_lines_can_execute(demo_seed):
+    seed = await a_seed_from(a_built_runner(), demo_seed)
+
+    assert seed.executable == {"pay.py": [1, 2, 3, 4]}
+    assert SeedRecord.from_json(seed.to_json()).executable == seed.executable
+
+
+def test_a_seed_written_before_executable_lines_existed_still_loads(demo_seed):
+    payload = json.loads(demo_seed.to_json())
+    del payload["executable"]
+
+    assert SeedRecord.from_json(json.dumps(payload)).executable == {}
 
 
 def test_a_seed_written_before_scoping_existed_still_loads(demo_seed):

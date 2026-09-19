@@ -13,7 +13,7 @@ per mutant and throw away the reason coverage contexts were captured at all.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 
 from chesterton.covmap.invert import IMPORT_TIME
@@ -66,6 +66,7 @@ def uncovered_findings(
     hunks: Sequence[Hunk],
     covmap: CoverageMap,
     changed: Mapping[str, Sequence[int]],
+    executable: Mapping[str, Collection[int]] | None = None,
 ) -> list[tuple[str, int]]:
     """Tier-0 findings: (file, line) for every CHANGED line no test executes.
 
@@ -79,12 +80,21 @@ def uncovered_findings(
     coverage to find, so every changed line of it would read as "no test
     defends this" — fabricated evidence. A test file is not code the suite
     defends; it is the suite.
+
+    A changed line that CANNOT execute is not a finding either. A closing
+    bracket, blank or comment has no bytecode; "no test executes it" is true
+    of every test that could ever exist. With `executable` (per file, the
+    lines coverage.py treats as statements) such lines are skipped. A file
+    absent from it keeps the old behaviour rather than silently losing
+    findings, since there is no data to say which of its lines can run.
     """
     changed_by_file = {file: set(lines) for file, lines in changed.items()}
+    runnable = {file: set(lines) for file, lines in (executable or {}).items()}
     sources = [hunk for hunk in hunks if is_mutable_source(hunk.file)]
     return [
         (defence.hunk.file, line)
         for defence in defended_hunks(sources, covmap)
         for line in defence.uncovered_lines
         if line in changed_by_file.get(defence.hunk.file, set())
+        and (defence.hunk.file not in runnable or line in runnable[defence.hunk.file])
     ]

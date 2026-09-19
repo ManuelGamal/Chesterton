@@ -108,6 +108,16 @@ async def test_a_well_formed_proposal_reaches_the_sandbox(demo_seed):
     assert report.model.failures == {}
 
 
+async def test_tier0_skips_changed_lines_that_cannot_execute(demo_seed):
+    # Pretend line 3 (the flaky-only `raise`) had no bytecode: it must then
+    # drop out of tier 0, where it is otherwise a finding (P3-6).
+    seed = replace(demo_seed, executable={"pay.py": [1, 2, 4]})
+
+    report = await run_seed(seed, FakeSandboxRunner(), reduce=False)
+
+    assert ("pay.py", 3) not in report.tier0
+
+
 def test_coverage_is_restricted_to_selectable_tests():
     coverage = {"pay.py": {2: [T_CHARGE, T_FLAKY], 3: [T_FLAKY]}}
 

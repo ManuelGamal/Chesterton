@@ -126,6 +126,35 @@ def test_a_line_run_only_at_import_is_not_a_tier0_finding():
     assert findings == [("region.py", 455)]
 
 
+def test_a_line_that_cannot_execute_is_never_a_tier0_finding():
+    # Live, xarray-7393 (2026-09-19): the changed closing `)` of a multi-line
+    # call was reported "no selectable test executes this line". It has no
+    # bytecode; no test could ever execute it.
+    covmap = {"indexing.py": {1537: ["t::a"], 1538: ["t::a"]}}
+    executable = {"indexing.py": [1537, 1538, 1541]}
+
+    findings = uncovered_findings(
+        [Hunk("indexing.py", 1537, 1541)],
+        covmap,
+        {"indexing.py": [1537, 1538, 1539, 1541]},
+        executable,
+    )
+
+    # 1539 is the bracket: not executable, not a finding. 1541 is a real
+    # statement no test runs: a finding.
+    assert findings == [("indexing.py", 1541)]
+
+
+def test_without_executable_data_a_file_keeps_the_old_behaviour():
+    # A seed built before executable lines were recorded cannot tell a
+    # bracket from a statement; it must not silently drop findings.
+    findings = uncovered_findings(
+        [Hunk("a.py", 1, 2)], {"a.py": {1: ["t::a"]}}, {"a.py": [1, 2]}, {}
+    )
+
+    assert findings == [("a.py", 2)]
+
+
 def test_import_time_is_never_offered_as_a_test_to_run():
     covmap = {"region.py": {29: [IMPORT_TIME], 30: ["tests/t.py::test_a"]}}
 

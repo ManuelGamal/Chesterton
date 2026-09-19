@@ -158,7 +158,7 @@ async def run_seed(
     changed = changed_lines(seed.pr.diff)
     hunks = _semantic_hunks(seed, changed)
     defended = restrict_coverage(seed.coverage, seed.selectable)
-    tier0 = uncovered_findings(hunks, defended, changed)
+    tier0 = uncovered_findings(hunks, defended, changed, seed.executable)
 
     llm_mutants: list[Mutant] = []
     model = None
