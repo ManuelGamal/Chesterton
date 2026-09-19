@@ -153,3 +153,78 @@ async def test_a_scripted_result_keeps_its_own_duration():
     result = await runner.run(base, "slow")
 
     assert result.duration_s == 12.5
+
+from chesterton.sandbox.protocol import SandboxReadError
+
+
+async def test_a_file_written_by_a_persisted_run_can_be_read_back():
+    runner = FakeSandboxRunner()
+    base = await runner.use_image("python:3.13")
+
+    built = await runner.run(
+        base, "true", files={"/testbed/a.py": "x = 1\n"},
+        disposable=False, tag="chesterton:t",
+    )
+
+    assert await runner.read_file(built.checkpoint_id, "/testbed/a.py") == b"x = 1\n"
+
+
+async def test_a_fork_inherits_the_files_of_its_parent():
+    # Measured live 2026-09-18: forks carry the parent's filesystem.
+    runner = FakeSandboxRunner()
+    base = await runner.use_image("python:3.13")
+    parent = await runner.run(
+        base, "true", files={"/p.txt": b"parent"}, disposable=False, tag="chesterton:p"
+    )
+
+    child = await runner.run(
+        parent.checkpoint_id, "true", files={"/c.txt": "child"},
+        disposable=False, tag="chesterton:c",
+    )
+
+    assert await runner.read_file(child.checkpoint_id, "/p.txt") == b"parent"
+    assert await runner.read_file(child.checkpoint_id, "/c.txt") == b"child"
+
+
+async def test_a_disposable_run_stores_nothing_to_read():
+    runner = FakeSandboxRunner()
+    base = await runner.use_image("python:3.13")
+    await runner.run(base, "true", files={"/gone.txt": "x"})
+
+    with pytest.raises(SandboxReadError):
+        await runner.read_file(base, "/gone.txt")
+
+
+async def test_artifacts_stand_in_for_files_a_command_would_produce():
+    runner = FakeSandboxRunner(artifacts={"/chesterton/coverage.json": "{}"})
+
+    assert await runner.read_file("any-ckpt", "/chesterton/coverage.json") == b"{}"
+    assert runner.reads == [("any-ckpt", "/chesterton/coverage.json")]
+
+
+async def test_a_handler_decides_the_result_from_the_files_written():
+    def handler(checkpoint_id, shell, files):
+        killed = "raise" not in files.get("/testbed/pay.py", "raise")
+        return RunResult("", "", 1 if killed else 0, None)
+
+    runner = FakeSandboxRunner(handler=handler)
+    base = await runner.use_image("python:3.13")
+
+    kept = await runner.run(base, "pytest", files={"/testbed/pay.py": "raise X\n"})
+    dropped = await runner.run(base, "pytest", files={"/testbed/pay.py": "pass\n"})
+
+    assert kept.exit_code == 0
+    assert dropped.exit_code == 1
+
+
+async def test_an_errored_persisted_run_yields_no_checkpoint():
+    # A failed operation persists nothing, so there is nothing to fork from.
+    runner = FakeSandboxRunner(
+        handler=lambda c, s, f: RunResult("", "", None, None, error="TimedOut")
+    )
+    base = await runner.use_image("python:3.13")
+
+    result = await runner.run(base, "build", disposable=False, tag="chesterton:t")
+
+    assert result.error == "TimedOut"
+    assert result.checkpoint_id is None

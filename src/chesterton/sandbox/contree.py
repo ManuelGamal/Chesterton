@@ -40,7 +40,11 @@ import os
 from collections.abc import Mapping
 
 from chesterton.paths import normalise_path
-from chesterton.sandbox.protocol import RunResult, require_tag_when_persisting
+from chesterton.sandbox.protocol import (
+    RunResult,
+    SandboxReadError,
+    require_tag_when_persisting,
+)
 
 #: Trailing slash matches ContreeEndpoint.TOKEN_FACTORY_SANDBOXES.
 DEFAULT_BASE_URL = "https://api.tokenfactory.nebius.com/sandboxes/"
@@ -212,6 +216,20 @@ class ConTreeSandboxRunner:
             checkpoint_id=None if disposable else str(result.uuid),
             duration_s=result.elapsed.total_seconds(),
         )
+
+    async def read_file(self, checkpoint_id: str, path: str) -> bytes:
+        sdk = self._handle()
+        from contree_sdk.sdk.exceptions import ContreeError
+
+        path = normalise_path(path)
+        try:
+            image = await sdk.images.use(checkpoint_id)
+            return await image.read(path)
+        except ContreeError as exc:
+            raise SandboxReadError(
+                f"could not read {path} from checkpoint {checkpoint_id}: "
+                f"{type(exc).__name__}: {exc}"
+            ) from exc
 
     async def aclose(self) -> None:
         """No-op against contree-sdk 0.3.6, which exposes no close/aclose.
