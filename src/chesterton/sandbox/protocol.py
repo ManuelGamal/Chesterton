@@ -20,12 +20,40 @@ class RunResult:
     both the fake and the real adapter must report that the same way — a fake
     that invents an id here would let offline code depend on something the
     live service cannot provide.
+
+    `error` is set when the sandbox OPERATION failed — it timed out, was
+    cancelled, or the service reported it failed — as opposed to the command
+    running and exiting non-zero, which is an ordinary result. An errored run
+    has no exit code: 0 would read as "tests passed" (a survivor) and anything
+    else as "tests failed" (a kill), and it is neither. Consumers must check
+    `error` first and exclude errored runs from statistics entirely.
     """
 
     stdout: str
     stderr: str
-    exit_code: int
+    #: The command's exit status. None exactly when `error` is set.
+    exit_code: int | None
     checkpoint_id: str | None
+    #: Wall time of the execution, when the backend reports one. None when the
+    #: run errored — a failed operation has no meaningful duration.
+    duration_s: float | None = None
+    #: Why the sandbox operation produced no result, or None when it did.
+    error: str | None = None
+
+
+def require_tag_when_persisting(disposable: bool, tag: str | None) -> None:
+    """Refuse to persist an untagged checkpoint.
+
+    An untagged image can be garbage-collected, and judging runs for weeks
+    after submission: a checkpoint that vanishes mid-judging takes the demo
+    with it. Every implementation calls this first, so the constraint holds
+    offline as well as live rather than being a convention callers remember.
+    """
+    if not disposable and not tag:
+        raise ValueError(
+            "every persisted checkpoint must be tagged: disposable=False "
+            "requires tag=..., or the image may be garbage-collected"
+        )
 
 
 @runtime_checkable
@@ -39,14 +67,20 @@ class SandboxRunner(Protocol):
         checkpoint_id: str,
         shell: str,
         *,
-        files: Mapping[str, str] | None = None,
+        files: Mapping[str, str | bytes] | None = None,
         disposable: bool = True,
+        tag: str | None = None,
+        timeout: float | None = None,
     ) -> RunResult:
         """Fork `checkpoint_id`, write `files`, run `shell`.
 
-        `files` maps destination path to file contents.
+        `files` maps destination path to file CONTENTS — text or bytes,
+        never a local path to read from. Text is written as UTF-8.
         `disposable=False` persists the resulting filesystem as a new
         checkpoint and returns its id; `disposable=True` returns None.
+        `tag` names the resulting checkpoint so it survives garbage collection,
+        and is required whenever `disposable=False` (ValueError otherwise).
+        `timeout` bounds the execution in seconds.
         """
         ...
 

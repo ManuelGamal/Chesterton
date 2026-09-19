@@ -677,6 +677,45 @@ committing them. **Acceptance bar: at least one curated seed must produce a
 solver-proved distinguishing input**, since that is the demo's strongest
 single moment and random search cannot substitute for it on camera.
 
+**MEASURED 2026-09-19 (Phase 2, Task 9).** Eligibility on a real seed —
+`IAMconsortium/nomenclature` @ `a0408e52fc6b2402c448c174802c16441326b80c`,
+source tree only — is **77/256 functions = 30%**, the top of the estimate above
+and well clear of the ~10% floor. `scripts/probe_crosshair.py` reproduces it.
+Of the 179 ineligible, 90 take no arguments, 52 have unannotated arguments and
+28 lack a return annotation. Those three are exact AST facts and account for
+the bulk of the ceiling. **The purity figure is not a fact and must not be
+quoted.** Only 9 functions were rejected as impure, but the probe tests a
+six-name heuristic against the root of a call: it reports `self.session.get(url)`,
+`p.read_text()`, `os.environ[name]` and `x + time.time()` as *eligible*. The
+impurity screen therefore **overstates** eligibility, unlike the probe's other
+gaps, which all undercount. Read 30% strictly as an upper bound: 170 of 256
+functions are disqualified on annotations alone, and some unknown share of the
+remaining 86 is impure. This codebase scores 45/71 = 63% and is not
+representative — we annotate more heavily than the seeds do.
+
+Eligibility is a ceiling, not a hit rate. But the acceptance bar is also met in
+principle: `crosshair diffbehavior` on Python 3.13.14 distinguished
+`if amount > balance` from `if amount >= balance` — our own `off_by_one`
+operator — in **0.38s**, reporting `Given: (amount=0, balance=0)` with one
+function returning `0` and the other raising. That is the demo moment, proved
+on the real interpreter rather than assumed.
+
+`crosshair-tool` 0.0.110 is MIT and installs on Python 3.13.14. Note its CLI
+has no top-level `--version` flag (`python -m crosshair --version` exits 2);
+read `crosshair.__version__` instead. **Phase 2b is justified on these
+numbers.**
+
+**Non-zero exit vs failed operation — MEASURED 2026-09-19.** Raw
+`contree_sdk` against `ubuntu:latest`: `exit 0` and `exit 1` both return an
+image in state `SUCCEEDED`, with `exit_code` 0 and 1 respectively and stdout and
+stderr readable. `sleep 60` under a 5 s timeout **raises**
+`OperationTimedOutError` after 5.6 s. So a killed mutant — tests fail, command
+exits non-zero — is an ordinary result, and an *exception* from `run()` is what
+marks a sandbox `error`. `run()` re-raises on a failed operation rather than
+returning a `FAILED` image, so the adapter must catch the SDK's `ContreeError`
+family around the call; a post-hoc state check on the returned image can never
+fire.
+
 **Survivor noise.** Triage deserves more of the six weeks than the
 visualization does, even though the visualization is what judges remember.
 

@@ -61,17 +61,30 @@ async def probe(runner: ConTreeSandboxRunner, ref: str) -> dict:
     # A pulled image with no repository in it is not a seed.
     try:
         ls = await runner.run(checkpoint, f"ls {REPO_PATH} 2>/dev/null | head -5")
-        out["repo"] = ls.exit_code == 0 and bool(ls.stdout.strip())
-        out["repo_sample"] = ls.stdout.strip().replace("\n", ", ")[:70]
     except Exception as exc:
         out["repo_error"] = f"{type(exc).__name__}: {exc}"
+    else:
+        # An errored OPERATION (timeout, cancellation, service failure) comes
+        # back as `.error`, not a raised exception. Left unchecked, `repo`
+        # stays False — indistinguishable from a genuine empty repository,
+        # which is a fabricated "no repo" finding on an image we never
+        # actually inspected.
+        if ls.error is not None:
+            out["repo_error"] = ls.error
+        else:
+            out["repo"] = ls.exit_code == 0 and bool(ls.stdout.strip())
+            out["repo_sample"] = ls.stdout.strip().replace("\n", ", ")[:70]
 
     # And one with no interpreter cannot run a test suite.
     try:
         py = await runner.run(checkpoint, "python --version 2>&1 || python3 --version 2>&1")
-        out["python"] = py.stdout.strip()[:40] or None
     except Exception as exc:
         out["python_error"] = f"{type(exc).__name__}: {exc}"
+    else:
+        if py.error is not None:
+            out["python_error"] = py.error
+        else:
+            out["python"] = py.stdout.strip()[:40] or None
 
     return out
 
@@ -98,8 +111,18 @@ async def main(refs: list[str]) -> int:
             continue
 
         print(f"     pulled in {r['seconds']:.1f}s -> {r['checkpoint']}")
-        print(f"     {REPO_PATH}: {'yes — ' + r.get('repo_sample', '') if r['repo'] else 'EMPTY'}")
-        print(f"     python: {r['python'] or 'NOT FOUND'}\n")
+        if r.get("repo_error"):
+            repo_status = f"ERROR — {r['repo_error']}"
+        elif r["repo"]:
+            repo_status = "yes — " + r.get("repo_sample", "")
+        else:
+            repo_status = "EMPTY"
+        print(f"     {REPO_PATH}: {repo_status}")
+        if r.get("python_error"):
+            python_status = f"ERROR — {r['python_error']}"
+        else:
+            python_status = r["python"] or "NOT FOUND"
+        print(f"     python: {python_status}\n")
 
     await runner.aclose()
 

@@ -17,11 +17,21 @@ Surface this file depends on (all confirmed present in 0.3.6):
                      tag=None, timeout=None, disposable=True, ...) -> ContreeImage
         .stdout .stderr .exit_code .elapsed .state  (properties)
         .uuid  -> uuid.UUID   (instance attribute, NOT a str)
+    contree_sdk.sdk.exceptions.ContreeError
+        base of FailedOperationError, CancelledOperationError and
+        OperationTimedOutError, which `await image.run(...)` raises
 
 Two shapes worth knowing. `run()` returns another `ContreeImage`, not a result
 object — the image *is* the checkpoint, so runs chain. And `ContreeImage` is
 awaitable (`__await__`), which is what makes `await image.run(...)` work even
 though `run` is not itself a coroutine function.
+
+One trap worth knowing. `run(files=...)` takes `{image_path: source}`, and in
+`UploadFileSpec._prepare_files` a `str` source is a LOCAL FILE PATH — it is
+wrapped in `Path(...)` and opened. Only `bytes` is uploaded as content. Our
+callers hold file *contents* as text (a mutant's `mutated_src`), so passing
+them straight through would ask the SDK to open a file whose name is the
+source code. `_as_upload` encodes at this boundary so nothing else has to know.
 """
 
 from __future__ import annotations
@@ -29,7 +39,8 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 
-from chesterton.sandbox.protocol import RunResult
+from chesterton.paths import normalise_path
+from chesterton.sandbox.protocol import RunResult, require_tag_when_persisting
 
 #: Trailing slash matches ContreeEndpoint.TOKEN_FACTORY_SANDBOXES.
 DEFAULT_BASE_URL = "https://api.tokenfactory.nebius.com/sandboxes/"
@@ -52,6 +63,31 @@ _MISSING_PROJECT = (
     f"{_ENV_PROJECT}, or pass project_id=..., using the id from "
     "https://tokenfactory.nebius.com/project/api-keys"
 )
+
+
+def _as_upload(files: Mapping[str, str | bytes]) -> dict[str, bytes]:
+    """File contents in the only form the SDK uploads as contents: bytes.
+
+    Destination keys are image paths, which the SDK builds with
+    `PurePosixPath`; a backslash there is not a separator but part of one flat
+    filename, so keys are normalised to forward slashes too.
+    """
+    upload: dict[str, bytes] = {}
+    for destination, content in files.items():
+        if isinstance(content, str):
+            content = content.encode("utf-8")
+        elif not isinstance(content, bytes):
+            # A Path here would be uploaded as a local file — the very
+            # confusion this function exists to rule out.
+            raise TypeError(
+                f"file contents for {destination!r} must be str or bytes, "
+                f"not {type(content).__name__}"
+            )
+        key = normalise_path(destination)
+        if key in upload:
+            raise ValueError(f"two destinations normalise to {key!r}")
+        upload[key] = content
+    return upload
 
 
 class ConTreeSandboxRunner:
@@ -128,18 +164,44 @@ class ConTreeSandboxRunner:
         checkpoint_id: str,
         shell: str,
         *,
-        files: Mapping[str, str] | None = None,
+        files: Mapping[str, str | bytes] | None = None,
         disposable: bool = True,
         tag: str | None = None,
+        timeout: float | None = None,
     ) -> RunResult:
+        require_tag_when_persisting(disposable, tag)
         sdk = self._handle()
+        from contree_sdk.sdk.exceptions import ContreeError
+
         image = await sdk.images.use(checkpoint_id)
-        result = await image.run(
-            shell=shell,
-            files=dict(files) if files else None,
-            disposable=disposable,
-            tag=tag,
-        )
+        try:
+            result = await image.run(
+                shell=shell,
+                files=_as_upload(files) if files else None,
+                disposable=disposable,
+                tag=tag,
+                timeout=timeout,
+            )
+        except ContreeError as exc:
+            # A failed, cancelled or timed-out operation. The SDK marks the
+            # image FAILED and re-raises, so a FAILED image never comes back
+            # from run() — the exception is the only signal there is. It is
+            # an error, never a pass and never a kill. Only the SDK's own
+            # errors are caught: a bug in this code must still surface.
+            return RunResult(
+                stdout="",
+                stderr="",
+                exit_code=None,
+                checkpoint_id=None,
+                duration_s=None,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+        # Reaching here, the image is SUCCEEDED and its result properties are
+        # safe to read. A command that exited non-zero lands here too, as an
+        # ordinary result: measured live 2026-09-19, `exit 1` returned
+        # SUCCEEDED with exit_code=1, while a timeout raised
+        # OperationTimedOutError.
+        #
         # A disposable run persists nothing, so there is no id to fork from.
         # Reporting result.uuid here would let offline code depend on
         # something the fake cannot honestly provide.
@@ -148,6 +210,7 @@ class ConTreeSandboxRunner:
             stderr=result.stderr,
             exit_code=result.exit_code,
             checkpoint_id=None if disposable else str(result.uuid),
+            duration_s=result.elapsed.total_seconds(),
         )
 
     async def aclose(self) -> None:

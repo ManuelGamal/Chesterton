@@ -10,7 +10,7 @@ import itertools
 from collections.abc import Mapping
 from dataclasses import replace
 
-from chesterton.sandbox.protocol import RunResult
+from chesterton.sandbox.protocol import RunResult, require_tag_when_persisting
 
 
 class FakeSandboxRunner:
@@ -18,7 +18,8 @@ class FakeSandboxRunner:
         self._responses = dict(responses or {})
         self._ids = itertools.count(1)
         self.calls: list[tuple[str, str]] = []
-        self.files_written: list[dict[str, str]] = []
+        self.files_written: list[dict[str, str | bytes]] = []
+        self.options: list[dict] = []
 
     async def use_image(self, ref: str) -> str:
         return f"img-{ref}"
@@ -28,12 +29,19 @@ class FakeSandboxRunner:
         checkpoint_id: str,
         shell: str,
         *,
-        files: Mapping[str, str] | None = None,
+        files: Mapping[str, str | bytes] | None = None,
         disposable: bool = True,
+        tag: str | None = None,
+        timeout: float | None = None,
     ) -> RunResult:
+        require_tag_when_persisting(disposable, tag)
         self.calls.append((checkpoint_id, shell))
         if files:
             self.files_written.append(dict(files))
+
+        self.options.append(
+            {"disposable": disposable, "tag": tag, "timeout": timeout}
+        )
 
         scripted = self._responses.get(shell)
         if scripted is not None:
@@ -42,7 +50,9 @@ class FakeSandboxRunner:
             return scripted
 
         new_id = None if disposable else f"ckpt-{next(self._ids)}"
-        return RunResult(stdout="", stderr="", exit_code=0, checkpoint_id=new_id)
+        return RunResult(
+            stdout="", stderr="", exit_code=0, checkpoint_id=new_id, duration_s=0.0
+        )
 
     async def aclose(self) -> None:
         return None

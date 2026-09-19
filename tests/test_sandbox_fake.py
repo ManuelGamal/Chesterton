@@ -1,3 +1,5 @@
+import pytest
+
 from chesterton.sandbox.fake import FakeSandboxRunner
 from chesterton.sandbox.protocol import RunResult
 
@@ -58,7 +60,9 @@ async def test_non_disposable_run_yields_a_new_checkpoint_id():
     runner = FakeSandboxRunner()
     base = await runner.use_image("python:3.13")
 
-    result = await runner.run(base, "pip install -e .", disposable=False)
+    result = await runner.run(
+        base, "pip install -e .", disposable=False, tag="chesterton:base"
+    )
 
     assert result.checkpoint_id is not None
     assert result.checkpoint_id != base
@@ -90,3 +94,62 @@ async def test_aclose_is_safe_to_call():
     runner = FakeSandboxRunner()
     await runner.aclose()
     await runner.aclose()
+
+
+async def test_the_fake_records_tag_and_timeout_on_a_persisted_run():
+    # On a persisted run, where the tag is what keeps the checkpoint alive —
+    # a disposable run persists nothing, so a tag there proves nothing.
+    runner = FakeSandboxRunner()
+    base = await runner.use_image("python:3.13")
+
+    result = await runner.run(
+        base, "pip install -e .", disposable=False, tag="chesterton:base",
+        timeout=30.0,
+    )
+
+    assert result.checkpoint_id is not None
+    assert runner.options == [
+        {"disposable": False, "tag": "chesterton:base", "timeout": 30.0}
+    ]
+
+
+@pytest.mark.parametrize("tag", [None, ""])
+async def test_persisting_an_untagged_checkpoint_is_refused(tag):
+    # An untagged image can be garbage-collected mid-judging.
+    runner = FakeSandboxRunner()
+    base = await runner.use_image("python:3.13")
+
+    with pytest.raises(ValueError, match="must be tagged"):
+        await runner.run(base, "pip install -e .", disposable=False, tag=tag)
+
+    assert runner.calls == []  # refused before anything ran
+
+
+async def test_a_disposable_run_needs_no_tag():
+    runner = FakeSandboxRunner()
+    base = await runner.use_image("python:3.13")
+
+    result = await runner.run(base, "pytest -q", disposable=True)
+
+    assert result.checkpoint_id is None
+
+
+async def test_a_run_reports_a_duration():
+    runner = FakeSandboxRunner()
+    base = await runner.use_image("python:3.13")
+
+    result = await runner.run(base, "pytest -q")
+
+    assert result.duration_s is not None
+    assert result.duration_s >= 0.0
+
+
+async def test_a_scripted_result_keeps_its_own_duration():
+    runner = FakeSandboxRunner(
+        responses={"slow": RunResult("", "", 0, None, duration_s=12.5)}
+    )
+    base = await runner.use_image("python:3.13")
+
+    result = await runner.run(base, "slow")
+
+    assert result.duration_s == 12.5
