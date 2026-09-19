@@ -52,6 +52,37 @@ def test_a_whitespace_only_change_is_rejected():
     assert gate.rejected["unchanged"] == 1
 
 
+def test_a_no_op_is_rejected_even_when_the_original_will_not_parse():
+    # The controller's reproduction. With no tree for the original, the
+    # unchanged check used to be skipped and this no-op was admitted — and a
+    # no-op survives every suite, so it would be reported as a permitted
+    # behaviour change that does not exist.
+    gate = MutantGate()
+    mutant = a_mutant(original_src="    return a\n", mutated_src="return a\n")
+
+    assert gate.admit(mutant) is False
+    assert gate.rejected == {"unchanged": 1}
+
+
+def test_a_comment_only_change_to_an_unparseable_original_is_rejected():
+    gate = MutantGate()
+    mutant = a_mutant(
+        original_src="    return a\n", mutated_src="return a  # shifted\n"
+    )
+
+    assert gate.admit(mutant) is False
+    assert gate.rejected == {"unchanged": 1}
+
+
+def test_a_real_change_to_an_unparseable_original_is_still_admitted():
+    # The fallback must reject only what it cannot tell apart, not everything.
+    gate = MutantGate()
+    mutant = a_mutant(original_src="    x = a\n", mutated_src="x = b\n")
+
+    assert gate.admit(mutant) is True
+    assert gate.rejected == {}
+
+
 def test_a_duplicate_mutant_is_rejected_once_seen():
     gate = MutantGate()
     assert gate.admit(a_mutant()) is True
