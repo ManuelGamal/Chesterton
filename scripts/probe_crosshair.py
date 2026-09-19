@@ -10,6 +10,14 @@ This measures the ceiling before Phase 2b commits to building the tier. It
 counts eligibility, not solver success — a function CrossHair cannot even
 attempt is a function the tier will never help with.
 
+Two kinds of check, of different quality. The annotation checks are exact.
+The purity screen is a name heuristic: it catches calls and attribute access
+rooted at known-impure modules, pathlib I/O methods and `self.<client>.get()`
+style network calls, but impurity behind any other call is invisible. So the
+eligible count is an upper bound and the impure count a lower one — an
+earlier, narrower screen passed `self.session.get(url)`, `p.read_text()`,
+`os.environ[name]` and `time.time()` as pure.
+
 Usage:
     python scripts/probe_crosshair.py <file-or-dir> [...]
 """
@@ -22,6 +30,50 @@ from pathlib import Path
 
 #: Calls that make a function unanalysable by a solver.
 _IMPURE_HINTS = {"open", "print", "input", "requests", "urlopen", "random"}
+
+#: Modules whose attributes are I/O, process state, the clock or chance.
+#: Touching one at all makes a function impure, called or not:
+#: `os.environ[name]` reads process state without a call in sight.
+_IMPURE_ROOTS = {
+    "os",
+    "sys",
+    "time",
+    "random",
+    "socket",
+    "subprocess",
+    "shutil",
+    "urllib",
+    "requests",
+    "httpx",
+}
+
+#: Methods that do I/O or read the clock whatever their receiver is called:
+#: pathlib's file API, and the datetime constructors that read "now".
+_IMPURE_METHODS = {
+    "read_text",
+    "write_text",
+    "read_bytes",
+    "write_bytes",
+    "open",
+    "exists",
+    "is_file",
+    "is_dir",
+    "iterdir",
+    "glob",
+    "rglob",
+    "mkdir",
+    "unlink",
+    "rmdir",
+    "touch",
+    "stat",
+    "now",
+    "today",
+    "utcnow",
+}
+
+#: Verbs that mean a network call when sent to a client held on `self`, as
+#: in `self.session.get(url)`.
+_CLIENT_VERBS = {"get", "post", "put", "patch", "delete", "request", "send"}
 
 #: Functions and coroutines walked by the probe.
 _FuncDef = ast.FunctionDef | ast.AsyncFunctionDef
@@ -60,12 +112,40 @@ def _eligible(fn: _FuncDef) -> tuple[bool, str]:
 
     for node in ast.walk(fn):
         if isinstance(node, ast.Call):
-            root = _call_root_name(node.func)
-            if root in _IMPURE_HINTS:
-                return False, f"calls {root}()"
+            reason = _impure_call(node.func)
+            if reason:
+                return False, reason
+        if isinstance(node, ast.Attribute):
+            root = _call_root_name(node)
+            if root in _IMPURE_ROOTS:
+                return False, f"uses {root}"
         if isinstance(node, (ast.Global, ast.Nonlocal)):
             return False, "mutates outer scope"
     return True, "eligible"
+
+
+def _impure_call(func: ast.expr) -> str | None:
+    """Why this call target is impure, or None if the heuristic sees nothing.
+
+    Still a heuristic: it matches names, so an impure call behind an arbitrary
+    helper is invisible and the function is counted eligible. Every gap here
+    OVERSTATES eligibility.
+    """
+    root = _call_root_name(func)
+    if root in _IMPURE_HINTS:
+        return f"calls {root}()"
+    if not isinstance(func, ast.Attribute):
+        return None
+    if func.attr in _IMPURE_METHODS:
+        return f"calls .{func.attr}()"
+    receiver = func.value
+    if (
+        func.attr in _CLIENT_VERBS
+        and isinstance(receiver, ast.Attribute)
+        and _call_root_name(receiver) == "self"
+    ):
+        return f"calls self.<client>.{func.attr}()"
+    return None
 
 
 def scan(path: Path) -> list[tuple[str, bool, str]]:
@@ -114,6 +194,11 @@ def main(targets: list[str]) -> int:
         "to find a difference within its budget. If eligibility is already "
         "under ~10%, Phase 2b is not worth building and the Hypothesis "
         "fallback should carry tier 1 alone."
+    )
+    print(
+        "The purity screen is a name heuristic that OVERSTATES eligibility — "
+        "impurity behind any call it cannot name goes unseen — while the "
+        "annotation checks are exact. Do not quote the impure count as a fact."
     )
     return 0
 
