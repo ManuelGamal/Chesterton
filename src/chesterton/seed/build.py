@@ -27,7 +27,12 @@ from chesterton.seed.record import SeedRecord, is_valid_slug, seed_tag
 
 #: Where SWE-rebench images check the repository out (probe_images.py).
 DEFAULT_WORKDIR = "/testbed"
-DEFAULT_TEST_COMMAND = "python -m pytest"
+
+#: The interpreter on PATH. In a SWE-rebench image this is WRONG: measured
+#: 2026-09-19, `python` there is conda base with no pytest, and the
+#: repository's dependencies live in /opt/conda/envs/testbed/bin/python. Pass
+#: the right one explicitly; scripts/probe_interpreter.py finds it.
+DEFAULT_PYTHON = "python"
 
 #: Outside the repository, so nothing here can leak into a test run.
 ARTIFACT_DIR = "/chesterton"
@@ -57,20 +62,33 @@ def _stage(name: str) -> str:
     return f"echo 'chesterton: {name}' >&2"
 
 
-def build_script(workdir: str, test_command: str) -> str:
+def default_test_command(python: str) -> str:
+    return f"{shlex.quote(python)} -m pytest"
+
+
+def build_script(workdir: str, test_command: str, python: str = DEFAULT_PYTHON) -> str:
     q = shlex.quote
+    py = q(python)
     return "\n".join(
         [
             "set -e",
             f"mkdir -p {ARTIFACT_DIR}",
             f"cd {q(workdir)}",
+            # First, before anything slow or state-changing. The first live
+            # build installed pytest-cov into an interpreter with no pytest
+            # and only failed two stages later, on a missing `pandas`.
+            _stage("checking the interpreter can import pytest"),
+            f"{py} -c 'import pytest' || {{ echo 'chesterton: {python} cannot "
+            "import pytest; find the right interpreter with "
+            "scripts/probe_interpreter.py and pass --python' >&2; exit 1; }",
             _stage("applying the PR diff"),
             f"git apply --whitespace=nowarn {DIFF_PATH}",
             _stage("installing pytest-cov"),
-            # The env var silences pip's root-user warning, which otherwise
-            # fills stderr. It is not the --root-user-action flag, because
-            # older pip rejects that flag and would fail the build.
-            "PIP_ROOT_USER_ACTION=ignore python -m pip install -q pytest-cov",
+            # Into the SAME interpreter the tests run under. The env var
+            # silences pip's root-user warning, which otherwise fills stderr.
+            # It is not the --root-user-action flag, because older pip
+            # rejects that flag and would fail the build.
+            f"PIP_ROOT_USER_ACTION=ignore {py} -m pip install -q pytest-cov",
             _stage("baseline run 1 of 3, under coverage"),
             # `|| true` on every test run: a failing test is data here, not a
             # build failure. classify_runs sorts the outcomes out.
@@ -80,7 +98,7 @@ def build_script(workdir: str, test_command: str) -> str:
             # Empty coverage means run 1 never got going, and the reason is in
             # its own output, so surface that rather than coverage's bare
             # "No data to report".
-            f"python -m coverage json --show-contexts -o {COVERAGE_PATH} || "
+            f"{py} -m coverage json --show-contexts -o {COVERAGE_PATH} || "
             f"{{ echo 'chesterton: coverage recorded no data; the end of run 1 "
             f"follows' >&2; tail -n 40 {RUN_LOGS[0]} >&2; exit 1; }}",
             _stage("baseline runs 2 and 3"),
@@ -106,19 +124,23 @@ async def build_seed(
     slug: str,
     image_ref: str,
     workdir: str = DEFAULT_WORKDIR,
-    test_command: str = DEFAULT_TEST_COMMAND,
+    python: str = DEFAULT_PYTHON,
+    test_command: str | None = None,
     timeout: float = SEED_TIMEOUT_S,
 ) -> SeedRecord:
     if not is_valid_slug(slug):
         raise ValueError(
             f"invalid slug {slug!r}: use lowercase letters, digits and hyphens"
         )
+    # Recorded in the seed, so every mutant run and ddmin probe uses the same
+    # interpreter the baseline was measured under.
+    test_command = test_command or default_test_command(python)
 
     base = await runner.use_image(image_ref)
     tag = seed_tag(slug)
     result = await runner.run(
         base,
-        build_script(workdir, test_command),
+        build_script(workdir, test_command, python),
         files={DIFF_PATH: pr.diff},
         disposable=False,
         tag=tag,

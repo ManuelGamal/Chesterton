@@ -39,6 +39,24 @@ def test_seed_writes_a_loadable_seed_record(tmp_path, demo_seed, capsys):
     assert "chesterton:seed-demo" in capsys.readouterr().out
 
 
+def test_seed_records_the_interpreter_passed_with_python(tmp_path, demo_seed):
+    out = tmp_path / "demo.json"
+
+    async def fetch(url):
+        return demo_seed.pr
+
+    code = main(
+        ["seed", "--pr", "https://github.com/acme/pay/pull/1", "--image", "x",
+         "--slug", "demo", "--out", str(out),
+         "--python", "/opt/conda/envs/testbed/bin/python"],
+        runner_factory=a_seedable_runner, fetch=fetch,
+    )
+
+    assert code == 0
+    seed = SeedRecord.from_json(out.read_text(encoding="utf-8"))
+    assert seed.test_command == "/opt/conda/envs/testbed/bin/python -m pytest"
+
+
 def test_run_writes_a_report_and_names_the_undefended_surface(tmp_path, demo_seed, capsys):
     seed_path = tmp_path / "demo.json"
     seed_path.write_text(demo_seed.to_json(), encoding="utf-8")

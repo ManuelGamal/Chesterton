@@ -19,7 +19,7 @@ from pathlib import Path
 
 from chesterton.execute.pool import RUN_OP_BUDGET
 from chesterton.run import RunRefused, RunReport, run_seed
-from chesterton.seed.build import SeedBuildError, build_seed
+from chesterton.seed.build import DEFAULT_PYTHON, SeedBuildError, build_seed
 from chesterton.seed.record import SeedRecord
 
 
@@ -53,6 +53,13 @@ def build_parser() -> argparse.ArgumentParser:
     seed.add_argument("--pr", required=True, help="GitHub pull request URL")
     seed.add_argument("--image", required=True, help="image ref, e.g. docker://...")
     seed.add_argument("--slug", required=True, help="lowercase letters, digits, hyphens")
+    seed.add_argument(
+        "--python",
+        default=DEFAULT_PYTHON,
+        help="interpreter the repository's tests run under; in SWE-rebench "
+        "images this is /opt/conda/envs/testbed/bin/python, not the `python` "
+        "on PATH (find it with scripts/probe_interpreter.py)",
+    )
     seed.add_argument("--out", required=True, type=Path)
 
     run = commands.add_parser("run", help="run Chesterton against a seed")
@@ -105,7 +112,9 @@ async def _seed(args, runner_factory, fetch) -> int:
     pr = await fetch(args.pr)
     runner = runner_factory()
     try:
-        seed = await build_seed(runner, pr, slug=args.slug, image_ref=args.image)
+        seed = await build_seed(
+            runner, pr, slug=args.slug, image_ref=args.image, python=args.python
+        )
     except SeedBuildError as exc:
         print(f"seed build failed: {exc}", file=sys.stderr)
         return 1

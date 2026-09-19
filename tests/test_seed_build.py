@@ -128,6 +128,40 @@ def test_the_script_names_each_stage_and_explains_empty_coverage():
     assert "PIP_ROOT_USER_ACTION=ignore python -m pip install" in script
 
 
+TESTBED_PY = "/opt/conda/envs/testbed/bin/python"
+
+
+def test_every_python_step_uses_the_chosen_interpreter():
+    # Measured live 2026-09-19: the plain `python` on PATH in a SWE-rebench
+    # image is conda BASE, with no pytest; the repository's dependencies live
+    # in the testbed environment. pip, pytest and coverage must all run the
+    # same interpreter, or pytest-cov lands where the tests do not run.
+    script = build_script("/testbed", f"{TESTBED_PY} -m pytest", python=TESTBED_PY)
+
+    assert f"{TESTBED_PY} -m pip install" in script
+    assert f"{TESTBED_PY} -m coverage json" in script
+    assert script.count(f"{TESTBED_PY} -m pytest") == 3
+    assert "\npython -m" not in script and " python -m" not in script
+
+
+def test_the_script_checks_the_interpreter_can_import_pytest_first():
+    script = build_script("/testbed", f"{TESTBED_PY} -m pytest", python=TESTBED_PY)
+
+    assert "chesterton: checking the interpreter can import pytest" in script
+    assert f"{TESTBED_PY} -c 'import pytest'" in script
+    # Before anything slow or state-changing.
+    assert script.index("import pytest") < script.index("git apply")
+
+
+async def test_the_chosen_interpreter_runs_the_tests_at_run_time_too(demo_seed):
+    seed = await build_seed(
+        a_built_runner(), demo_seed.pr, slug="demo",
+        image_ref="docker://example/pay", python=TESTBED_PY,
+    )
+
+    assert seed.test_command == f"{TESTBED_PY} -m pytest"
+
+
 async def test_a_baseline_where_nothing_passes_every_run_is_refused(demo_seed):
     runner = a_built_runner(**{RUN_LOGS[1]: STABLE.replace("PASSED", "FAILED")})
 
