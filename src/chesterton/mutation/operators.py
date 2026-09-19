@@ -220,20 +220,46 @@ class _Applier(cst.CSTTransformer):
             return updated.expression
         return updated
 
-    def leave_ExceptHandler(
-        self, original: cst.ExceptHandler, updated: cst.ExceptHandler
-    ):
-        if self._hits(original, "widen_except"):
+    def leave_Try(self, original: cst.Try, updated: cst.Try):
+        # Bare `except:` is only legal as a try's *last* handler — LibCST
+        # itself enforces this. Whether our target handler is the last one is
+        # a property of its parent Try, not of the handler alone, so this
+        # candidate is resolved here rather than in leave_ExceptHandler.
+        if self.applied or self.target.operator != "widen_except":
+            return updated
+        for index, handler in enumerate(original.handlers):
+            position = self.get_metadata(PositionProvider, handler).start
+            if (
+                position.line != self.target.line
+                or position.column != self.target.column
+            ):
+                continue
             self.applied = True
-            # Dropping the type leaves LibCST's whitespace_after_except intact,
-            # which renders `except :`. Valid Python, but it reads as a tool
-            # artifact rather than a plausible human edit — and a mutant that
-            # looks machine-generated undermines the finding it supports.
-            return updated.with_changes(
-                type=None,
-                name=None,
-                whitespace_after_except=cst.SimpleWhitespace(""),
-            )
+            is_last = index == len(original.handlers) - 1
+            new_handlers = list(updated.handlers)
+            if is_last:
+                # Dropping the type leaves LibCST's whitespace_after_except
+                # intact, which renders `except :`. Valid Python, but it
+                # reads as a tool artifact rather than a plausible human
+                # edit — and a mutant that looks machine-generated
+                # undermines the finding it supports.
+                new_handlers[index] = new_handlers[index].with_changes(
+                    type=None,
+                    name=None,
+                    whitespace_after_except=cst.SimpleWhitespace(""),
+                )
+            else:
+                # A bare `except:` here would make LibCST refuse to render
+                # the tree ("must be the last one"). `except Exception:` is
+                # legal wherever it sits, and it is exactly the widening an
+                # agent quietly makes in real code: it now swallows what the
+                # later, narrower handler was written to catch.
+                new_handlers[index] = new_handlers[index].with_changes(
+                    type=cst.Name("Exception"),
+                    name=None,
+                    whitespace_after_except=cst.SimpleWhitespace(" "),
+                )
+            return updated.with_changes(handlers=new_handlers)
         return updated
 
     def leave_Finally(self, original: cst.Finally, updated: cst.Finally):

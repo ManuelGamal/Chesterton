@@ -72,6 +72,36 @@ def test_a_bare_except_is_not_offered_for_widening():
     assert all(c.operator != "widen_except" for c in find_candidates(source, [4]))
 
 
+TWO_HANDLERS = '''\
+def load(key):
+    try:
+        return cache[key]
+    except ValueError:
+        return None
+    except KeyError:
+        return default
+'''
+
+
+def test_widening_a_non_last_handler_yields_except_exception_not_bare():
+    # Ruling P22: a bare `except:` is only legal as a try's LAST handler.
+    # Widening an earlier one to bare would make LibCST refuse to render the
+    # tree at all ("must be the last one"), aborting the whole run.
+    candidate = pick(TWO_HANDLERS, [4], "widen_except")
+    mutated = apply_candidate(TWO_HANDLERS, candidate)
+    assert "except Exception:\n        return None\n" in mutated
+    assert "except ValueError" not in mutated
+    assert "except KeyError:\n        return default\n" in mutated  # untouched
+
+
+def test_widening_the_last_handler_still_yields_bare_except():
+    candidate = pick(TWO_HANDLERS, [6], "widen_except")
+    mutated = apply_candidate(TWO_HANDLERS, candidate)
+    assert "except ValueError:\n        return None\n" in mutated  # untouched
+    assert "except:\n        return default\n" in mutated
+    assert "except KeyError" not in mutated
+
+
 def test_a_finally_block_offers_cleanup_removal():
     # The `finally:` line is line 5 of CLEANUP.
     mutated = apply_candidate(CLEANUP, pick(CLEANUP, [5], "remove_cleanup"))

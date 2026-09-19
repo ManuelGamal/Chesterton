@@ -130,6 +130,56 @@ def test_a_backslash_hunk_still_matches_forward_slash_sources():
     assert {m.file for m in mutants} == {"widgets/pay.py"}
 
 
+TWO_TYPED_HANDLERS = (
+    "def load(key):\n"
+    "    try:\n"
+    "        return cache[key]\n"
+    "    except ValueError:\n"
+    "        return None\n"
+    "    except KeyError:\n"
+    "        return default\n"
+)
+
+
+def test_widen_except_on_a_non_last_handler_does_not_abort_the_run():
+    # The controller's reproduction (ruling P22). Before the fix this raised
+    # CSTValidationError out of generate() and produced zero mutants for the
+    # whole file, not just this candidate.
+    mutants, rejected = generate(
+        [Hunk("svc.py", 1, 7)], {"svc.py": TWO_TYPED_HANDLERS}
+    )
+
+    widened = {m.rationale: m.mutated_src for m in mutants if m.operator == "widen_except"}
+    assert len(widened) == 2
+    non_last = next(src for rationale, src in widened.items() if "ValueError" in rationale)
+    last = next(src for rationale, src in widened.items() if "KeyError" in rationale)
+    assert "except Exception:\n        return None\n" in non_last
+    assert "except:\n        return default\n" in last
+    assert "operator_error" not in rejected
+
+
+def test_a_candidate_that_fails_to_apply_costs_one_mutant_not_the_run(monkeypatch):
+    # Ruling P22 part 2. LibCST's validation can reject a shape we did not
+    # foresee; one bad candidate must never abort the run.
+    import chesterton.mutation.generate as generate_module
+
+    real_apply_candidate = generate_module.apply_candidate
+    calls = {"n": 0}
+
+    def flaky(source, candidate):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise ValueError("simulated operator crash")
+        return real_apply_candidate(source, candidate)
+
+    monkeypatch.setattr(generate_module, "apply_candidate", flaky)
+
+    mutants, rejected = generate([Hunk("pay.py", 1, 5)], {"pay.py": GUARDED})
+
+    assert rejected["operator_error"] == 1
+    assert mutants  # the other candidates still made it through
+
+
 def test_the_same_edit_with_different_separators_deduplicates():
     # Two spellings of one file are one mutant, not two — otherwise we pay for
     # the same sandbox operation twice to learn the same thing.

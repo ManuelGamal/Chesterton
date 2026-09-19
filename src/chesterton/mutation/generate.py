@@ -82,7 +82,17 @@ def generate(
             continue
 
         for candidate in find_candidates(source, hunk.lines):
-            mutated = apply_candidate(source, candidate)
+            try:
+                mutated = apply_candidate(source, candidate)
+            except Exception:
+                # "operator_error": our operators are ours to trust, but
+                # LibCST's own tree validation can reject a shape we did not
+                # foresee (e.g. widen_except finding a shape we still missed).
+                # One bad candidate must cost one mutant, never abort the
+                # whole run — do not narrow this to a specific exception type
+                # without re-reading why it is broad here.
+                skip("operator_error")
+                continue
             mutant = Mutant(
                 file=hunk.file,
                 start_line=hunk.start_line,
