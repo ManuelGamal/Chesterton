@@ -627,6 +627,49 @@ coverage-selected tests against a *patched* tree, which may run longer. The
 fork mechanics are proven; the per-mutant duration is not yet pinned. Re-measure
 once the seed pipeline produces a genuinely green baseline.
 
+### Phase 3 live end-to-end — MEASURED 2026-09-19
+
+`python -m chesterton seed` then `run` on nomenclature PR #284 ("Raise error
+for unknown region"), image `…iamconsortium_1776_nomenclature-284`, interpreter
+`/opt/conda/envs/testbed/bin/python`. This is the first measurement that ran a
+real test suite (see the correction above).
+
+| | |
+|---|---|
+| seed | checkpoint tagged `chesterton:seed-nomenclature-284`; **137 selectable**, 2 flaky, 3 failing tests after three baseline runs |
+| **per-mutant duration** | **median 3.96 s, worst 4.16 s** (19 coverage-selected tests, n=5 across both runs) |
+| run, deterministic only | 2 hunks, 1 mutant (killed), 4 sandbox ops of 160, **22.9 s** wall incl. ddmin |
+| run, with Lightning | 8 mutants: 3 killed, 1 survived, 4 uncovered, 0 error; 7 ops; **28.2 s** wall |
+| model | 3 calls for 2 hunks, 1 retried, 0 final failures; the gate rejected 1 no-op |
+| ddmin | 2 hunks, **3 probes**, 0 undefended, which is correct: reverting either hunk breaks the PR's new test |
+
+**The 20 s per-mutant target holds with real work, at ~4 s.** This replaces
+the invalid 4.7 s figure above.
+
+**Found live and fixed the same day:** the seed build ran conda *base*
+(`--python` now required in practice); a failed build hid its cause
+(`stderr or stdout`); `-rA` captured-log lines were parsed as failing tests;
+and Phase 1's dropping of the empty coverage context turned a changed
+**import line** into a false tier-0 finding. Import time now counts as
+executed.
+
+**Open, from this run, with the evidence:**
+- **The one survivor is dead code.** Lightning added `pass` *after* the
+  `raise`, which is unreachable, and its rationale ("making the raise
+  unreachable") is false. The score reads 75% when every catchable mutant was
+  caught. This is live justification for Phase 4's deterministic equivalence
+  pre-filter; dead code after `raise`/`return` is the first case it should
+  handle.
+- **`delete_guard` did not fire on the PR's own guard.** The guard logs, then
+  raises, and Phase 2 ruled out bodies with a log call before the raise.
+  Real-world guards usually look exactly like that, so the headline operator
+  should accept them.
+- **Mutants on import-only lines are unselectable.** The four on line 29 were
+  reported `uncovered` (now with honest wording). Running the whole selectable
+  suite for them would test them properly, at one suite run each.
+- **This seed is well defended, so it does not show the demo's moment.** A
+  demo seed needs a PR with an undefended hunk (spec §20: curated selection).
+
 **Load-bearing unverified facts, to confirm in week one:**
 
 - ~~The ~7,500 prebuilt SWE-rebench images are pullable.~~ **RESOLVED
