@@ -25,6 +25,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
+from chesterton.covmap.invert import IMPORT_TIME
 from chesterton.defended import covering_tests
 from chesterton.execute.pool import BudgetExhausted, SandboxPool
 from chesterton.models import Hunk
@@ -88,11 +89,25 @@ def _command(seed: SeedRecord, tests: Sequence[str]) -> str:
     )
 
 
+def _uncovered_detail(mutant: Mutant, seed: SeedRecord) -> str:
+    by_line = seed.coverage.get(mutant.file, {})
+    lines = range(mutant.start_line, mutant.end_line + 1)
+    if any(IMPORT_TIME in by_line.get(line, []) for line in lines):
+        # Live, nomenclature-284: calling a changed import line "executed by
+        # no test" was false. It runs on every import; coverage just cannot
+        # name the tests that depend on it.
+        return (
+            "runs only at import time, so coverage cannot select the tests "
+            "that depend on it; not run"
+        )
+    return "no selectable test executes this hunk"
+
+
 async def _execute(pool: SandboxPool, seed: SeedRecord, mutant: Mutant) -> MutantResult:
     tests = select_tests(mutant, seed)
     if not tests:
         return MutantResult(
-            mutant, "uncovered", (), detail="no selectable test executes this hunk"
+            mutant, "uncovered", (), detail=_uncovered_detail(mutant, seed)
         )
     try:
         result = await pool.run(

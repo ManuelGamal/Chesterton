@@ -1,3 +1,6 @@
+from dataclasses import replace
+
+from chesterton.covmap.invert import IMPORT_TIME
 from chesterton.execute.mutants import (
     MutantResult,
     classify,
@@ -81,6 +84,19 @@ async def test_a_mutant_covered_only_by_flaky_tests_is_uncovered_and_costs_nothi
     assert result.detail
     assert runner.calls == []
     assert pool.ops_used == 0
+
+
+async def test_an_import_time_hunk_is_not_described_as_unexecuted(demo_seed):
+    # Live, nomenclature-284: four model mutants on a changed import line
+    # were reported "no selectable test executes this hunk". The line runs on
+    # every import; coverage just cannot say which tests depend on it.
+    seed = replace(demo_seed, coverage={"pay.py": {1: [IMPORT_TIME]}})
+
+    [result] = await execute_mutants(SandboxPool(exits(1)), seed, [a_mutant(start=1, end=1)])
+
+    assert result.verdict == "uncovered"
+    assert "import time" in result.detail
+    assert "no selectable test executes" not in result.detail
 
 
 async def test_a_spent_budget_is_an_error_never_a_kill(demo_seed):
