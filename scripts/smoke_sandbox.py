@@ -217,16 +217,22 @@ async def main(image_ref: str) -> int:
     return summarise()
 
 
-#: ForbiddenError names an entitlement problem, not a design finding about
-#: whatever step happened to hit it — Sandboxes is a separate beta
-#: entitlement from inference, and no amount of code fixes it. It fires
-#: whenever the error text names it, regardless of which check surfaced it
-#: (ruling on R2: the hint must fire on the error text, not on a fixed step).
+#: ForbiddenError is an authorisation problem, not a design finding about
+#: whatever step happened to hit it, so it fires on the error text regardless
+#: of which check surfaced it (ruling on R2).
+#:
+#: Measured, not assumed: the first live ForbiddenError on this project was
+#: diagnosed as a missing beta entitlement, and that was wrong — the project
+#: header was carrying the wrong value. Check the cheap cause before writing to
+#: support.
 _FORBIDDEN_HINT = (
-    "The error names ForbiddenError: the key authenticates but is NOT "
-    "authorised for Sandboxes — a separate beta entitlement from inference. "
-    "Request access via the Token Factory console or contree@nebius.com "
-    "before anything else; no amount of code fixes this."
+    "The error names ForbiddenError: the key authenticates but this request "
+    "is not authorised. Sandboxes authorises on a Project header as well as "
+    "the bearer token, so check NEBIUS_PROJECT_ID FIRST — it must be the "
+    "project the key belongs to (both are at "
+    "https://tokenfactory.nebius.com/project/api-keys). Only if that is "
+    "right is this an entitlement problem, which needs access requested via "
+    "the Token Factory console or contree@nebius.com."
 )
 
 #: Shown for a FAIL that came from an errored sandbox OPERATION (or an
