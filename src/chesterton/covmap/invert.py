@@ -6,8 +6,13 @@ checkpoint. Dynamic contexts are unreliable under pytest-xdist.
 Note the flag: pytest-cov takes `--cov-context=test`. `test_function` is
 coverage.py's own `dynamic_context` setting value and is not valid here.
 
-The empty-string context means "executed outside any test", which for our
-purposes is the same as undefended.
+The empty-string context means "executed outside any test": at import,
+while pytest collects. It is recorded as IMPORT_TIME, not dropped. Phase 1
+dropped it as "undefended", and live on nomenclature-284 (2026-09-19) that
+made a changed `from nomenclature.validation import log_error` a tier-0
+finding, "no test executes this line", on a line every run executes. Import
+time is execution, so tier 0 must not report it; it is never a test id that
+can be selected either, and consumers filter it out of test selection.
 """
 
 from __future__ import annotations
@@ -24,10 +29,15 @@ COVERAGE_CAPTURE_COMMANDS = (
 )
 
 
-def _clean(context: str) -> str | None:
-    """'tests/t.py::test_x|run' -> 'tests/t.py::test_x'; '' -> None."""
+#: Stands in for the empty context: executed at import, outside any test.
+#: Angle brackets cannot appear in a pytest node id, so it never collides.
+IMPORT_TIME = "<import>"
+
+
+def _clean(context: str) -> str:
+    """'tests/t.py::test_x|run' -> 'tests/t.py::test_x'; '' -> IMPORT_TIME."""
     name = context.split("|", 1)[0]
-    return name or None
+    return name or IMPORT_TIME
 
 
 def invert_coverage(report: dict) -> CoverageMap:
@@ -35,8 +45,7 @@ def invert_coverage(report: dict) -> CoverageMap:
     for path, file_report in report.get("files", {}).items():
         lines: dict[int, list[str]] = {}
         for line_str, contexts in file_report.get("contexts", {}).items():
-            cleaned = [name for name in (_clean(c) for c in contexts) if name]
-            lines[int(line_str)] = sorted(set(cleaned))
+            lines[int(line_str)] = sorted({_clean(c) for c in contexts})
         covmap[normalise_path(path)] = lines
     return covmap
 

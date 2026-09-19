@@ -23,6 +23,7 @@ from collections import Counter
 from collections.abc import Collection
 from dataclasses import asdict, dataclass
 
+from chesterton.covmap.invert import IMPORT_TIME
 from chesterton.defended import uncovered_findings
 from chesterton.diffing.parse import changed_lines
 from chesterton.diffing.semantic import semantic_hunks
@@ -81,9 +82,17 @@ class RunReport:
 
 
 def restrict_coverage(coverage: CoverageMap, allowed: Collection[str]) -> CoverageMap:
-    """Ruling P3-6: a line run only by a flaky or failing test is undefended."""
+    """Ruling P3-6: a line run only by a flaky or failing test is undefended.
+
+    IMPORT_TIME survives the restriction. It is not a test that can be flaky,
+    and dropping it here would bring back the false tier-0 finding on
+    import-time lines.
+    """
     return {
-        file: {line: [t for t in tests if t in allowed] for line, tests in lines.items()}
+        file: {
+            line: [t for t in tests if t in allowed or t == IMPORT_TIME]
+            for line, tests in lines.items()
+        }
         for file, lines in coverage.items()
     }
 

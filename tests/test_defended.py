@@ -3,6 +3,7 @@ from chesterton.defended import (
     covering_tests,
     uncovered_findings,
 )
+from chesterton.covmap.invert import IMPORT_TIME
 from chesterton.models import Hunk
 
 COVMAP = {
@@ -109,3 +110,23 @@ def test_an_empty_coverage_map_makes_everything_uncovered():
     result = defended_hunks([Hunk("users.py", 1, 2)], {})
     assert result[0].uncovered_lines == [1, 2]
     assert result[0].fully_uncovered is True
+
+
+def test_a_line_run_only_at_import_is_not_a_tier0_finding():
+    # nomenclature-284, live: a changed import line ran at collection, under
+    # the empty context. It is executed, so tier 0 must not call it untested.
+    covmap = {"region.py": {29: [IMPORT_TIME], 455: []}}
+
+    findings = uncovered_findings(
+        [Hunk("region.py", 29, 29), Hunk("region.py", 455, 455)],
+        covmap,
+        {"region.py": [29, 455]},
+    )
+
+    assert findings == [("region.py", 455)]
+
+
+def test_import_time_is_never_offered_as_a_test_to_run():
+    covmap = {"region.py": {29: [IMPORT_TIME], 30: ["tests/t.py::test_a"]}}
+
+    assert covering_tests(Hunk("region.py", 29, 30), covmap) == ["tests/t.py::test_a"]

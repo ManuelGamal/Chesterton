@@ -3,6 +3,7 @@ import json
 import openai
 import pytest
 
+from chesterton.covmap.invert import IMPORT_TIME
 from chesterton.run import RunRefused, restrict_coverage, run_seed
 from chesterton.sandbox.fake import FakeSandboxRunner
 from chesterton.sandbox.protocol import RunResult
@@ -94,6 +95,14 @@ def test_coverage_is_restricted_to_selectable_tests():
     coverage = {"pay.py": {2: [T_CHARGE, T_FLAKY], 3: [T_FLAKY]}}
 
     assert restrict_coverage(coverage, {T_CHARGE}) == {"pay.py": {2: [T_CHARGE], 3: []}}
+
+
+def test_restriction_keeps_the_import_time_marker():
+    # Import time is not a test that can be flaky; dropping it here would
+    # bring the false tier-0 finding back through the restriction.
+    coverage = {"region.py": {29: [IMPORT_TIME]}}
+
+    assert restrict_coverage(coverage, {T_CHARGE}) == {"region.py": {29: [IMPORT_TIME]}}
 
 
 async def test_the_report_serialises_and_never_says_equivalent(demo_seed):
