@@ -10,7 +10,7 @@ import itertools
 from collections.abc import Mapping
 from dataclasses import replace
 
-from chesterton.sandbox.protocol import RunResult
+from chesterton.sandbox.protocol import RunResult, require_tag_when_persisting
 
 
 class FakeSandboxRunner:
@@ -34,6 +34,7 @@ class FakeSandboxRunner:
         tag: str | None = None,
         timeout: float | None = None,
     ) -> RunResult:
+        require_tag_when_persisting(disposable, tag)
         self.calls.append((checkpoint_id, shell))
         if files:
             self.files_written.append(dict(files))

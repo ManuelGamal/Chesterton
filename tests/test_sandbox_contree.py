@@ -228,6 +228,26 @@ async def test_a_command_exiting_non_zero_is_an_ordinary_result_not_an_error():
     assert result.duration_s == 1.5
 
 
+async def test_the_adapter_refuses_to_persist_an_untagged_checkpoint():
+    image = _FakeImage()
+
+    with pytest.raises(ValueError, match="must be tagged"):
+        await a_runner_over(image).run("ckpt", "pip install -e .", disposable=False)
+
+    assert image.run_kwargs is None  # refused before the SDK was touched
+
+
+async def test_the_adapter_forwards_the_tag_of_a_persisted_run():
+    image = _FakeImage()
+
+    await a_runner_over(image).run(
+        "ckpt", "pip install -e .", disposable=False, tag="chesterton:base"
+    )
+
+    assert image.run_kwargs["disposable"] is False
+    assert image.run_kwargs["tag"] == "chesterton:base"
+
+
 async def test_an_error_outside_the_sdk_still_propagates():
     # Only the SDK's own errors become `error`; a bug here must surface.
     image = _FakeImage(raises=TypeError("a bug in our own code"))

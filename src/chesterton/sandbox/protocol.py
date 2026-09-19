@@ -41,6 +41,21 @@ class RunResult:
     error: str | None = None
 
 
+def require_tag_when_persisting(disposable: bool, tag: str | None) -> None:
+    """Refuse to persist an untagged checkpoint.
+
+    An untagged image can be garbage-collected, and judging runs for weeks
+    after submission: a checkpoint that vanishes mid-judging takes the demo
+    with it. Every implementation calls this first, so the constraint holds
+    offline as well as live rather than being a convention callers remember.
+    """
+    if not disposable and not tag:
+        raise ValueError(
+            "every persisted checkpoint must be tagged: disposable=False "
+            "requires tag=..., or the image may be garbage-collected"
+        )
+
+
 @runtime_checkable
 class SandboxRunner(Protocol):
     async def use_image(self, ref: str) -> str:
@@ -63,7 +78,8 @@ class SandboxRunner(Protocol):
         never a local path to read from. Text is written as UTF-8.
         `disposable=False` persists the resulting filesystem as a new
         checkpoint and returns its id; `disposable=True` returns None.
-        `tag` names the resulting checkpoint so it survives garbage collection.
+        `tag` names the resulting checkpoint so it survives garbage collection,
+        and is required whenever `disposable=False` (ValueError otherwise).
         `timeout` bounds the execution in seconds.
         """
         ...

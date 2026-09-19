@@ -40,7 +40,7 @@ import os
 from collections.abc import Mapping
 
 from chesterton.paths import normalise_path
-from chesterton.sandbox.protocol import RunResult
+from chesterton.sandbox.protocol import RunResult, require_tag_when_persisting
 
 #: Trailing slash matches ContreeEndpoint.TOKEN_FACTORY_SANDBOXES.
 DEFAULT_BASE_URL = "https://api.tokenfactory.nebius.com/sandboxes/"
@@ -169,6 +169,7 @@ class ConTreeSandboxRunner:
         tag: str | None = None,
         timeout: float | None = None,
     ) -> RunResult:
+        require_tag_when_persisting(disposable, tag)
         sdk = self._handle()
         from contree_sdk.sdk.exceptions import ContreeError
 
