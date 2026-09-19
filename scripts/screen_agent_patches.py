@@ -38,7 +38,7 @@ import httpx
 
 from chesterton.execute.pool import SandboxPool
 from chesterton.filters import is_mutable_source
-from chesterton.github.swebench import fetch_swebench_row, image_for
+from chesterton.github.swebench import fetch_swebench_rows, image_for
 from chesterton.sandbox.contree import ConTreeSandboxRunner
 
 PYTHON = "/opt/miniconda3/envs/testbed/bin/python"
@@ -123,11 +123,7 @@ def classify(error: str | None, stdout: str) -> str:
     return f"error:augmented_exit_{augmented}"
 
 
-async def screen(pool, iid: str, patch_dir: Path) -> dict:
-    async with httpx.AsyncClient(timeout=60) as http:
-        original = await fetch_swebench_row(iid, client=http)
-        augmented = await fetch_swebench_row(iid, client=http, datasets=UTBOOST)
-
+async def screen(pool, iid: str, patch_dir: Path, original: dict, augmented: dict) -> dict:
     base = await pool.runner.use_image(image_for(iid))
     script = screen_script(
         _ids(original["FAIL_TO_PASS"]),
@@ -151,15 +147,25 @@ async def screen(pool, iid: str, patch_dir: Path) -> dict:
 
 
 async def main(patch_dir: Path, instance_ids: list[str]) -> int:
+    # One scan per dataset family, not two per task: scanning per task drew
+    # HTTP 429 from the dataset API.
+    async with httpx.AsyncClient(timeout=60) as http:
+        originals = await fetch_swebench_rows(instance_ids, client=http)
+        augmenteds = await fetch_swebench_rows(instance_ids, client=http, datasets=UTBOOST)
+
     runner = ConTreeSandboxRunner()
     total = sum(
         len(json.loads((patch_dir / iid / "summary.json").read_text(encoding="utf-8")))
         for iid in instance_ids
+        if (patch_dir / iid / "summary.json").exists()
     )
     pool = SandboxPool(runner, op_budget=total)
     try:
         for iid in instance_ids:
-            report = await screen(pool, iid, patch_dir)
+            if iid not in originals or iid not in augmenteds:
+                print(f"\n{iid}: not in both datasets, skipped")
+                continue
+            report = await screen(pool, iid, patch_dir, originals[iid], augmenteds[iid])
             (patch_dir / iid / "screen.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
             counts = Counter(p["verdict"] for p in report["patches"])
             print(f"\n{iid}: {dict(counts)}")

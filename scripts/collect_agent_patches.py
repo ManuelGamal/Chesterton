@@ -33,7 +33,7 @@ from pathlib import Path
 
 import httpx
 
-from chesterton.github.swebench import fetch_swebench_task
+from chesterton.github.swebench import fetch_swebench_rows, task_from_row
 
 LISTING = "https://api.github.com/repos/SWE-bench/experiments/contents/evaluation/{split}"
 RESULTS = "https://raw.githubusercontent.com/SWE-bench/experiments/main/evaluation/{split}/{sub}/results/results.json"
@@ -67,7 +67,12 @@ def _source_only(diff: str, test_paths: set[str]) -> str:
 async def main(out_dir: Path, instance_ids: list[str]) -> int:
     semaphore = asyncio.Semaphore(16)
     async with httpx.AsyncClient(timeout=60, follow_redirects=True) as http:
-        tasks = {iid: await fetch_swebench_task(iid, client=http) for iid in instance_ids}
+        # One scan for every instance: scanning per instance drew HTTP 429.
+        rows = await fetch_swebench_rows(instance_ids, client=http)
+        missing = [iid for iid in instance_ids if iid not in rows]
+        if missing:
+            print(f"not in SWE-bench Verified or Lite, skipped: {', '.join(missing)}")
+        tasks = {iid: task_from_row(rows[iid]) for iid in instance_ids if iid in rows}
 
         submissions: list[tuple[str, str]] = []
         for split in SPLITS:
