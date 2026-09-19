@@ -103,6 +103,31 @@ async def test_a_failing_build_script_is_reported_with_its_stderr(demo_seed):
         await a_seed_from(runner, demo_seed)
 
 
+async def test_a_failure_shows_stdout_even_when_stderr_is_only_noise(demo_seed):
+    # Measured live 2026-09-19: stderr carried pip's root-user warning, and
+    # showing `stderr or stdout` hid the real reason, which was on stdout.
+    runner = FakeSandboxRunner(
+        handler=lambda c, s, f: RunResult(
+            "No data to report.", "WARNING: Running pip as the 'root' user", 1, None
+        )
+    )
+
+    with pytest.raises(SeedBuildError, match="No data to report"):
+        await a_seed_from(runner, demo_seed)
+
+
+def test_the_script_names_each_stage_and_explains_empty_coverage():
+    script = build_script("/testbed", "python -m pytest")
+
+    for stage in ("applying the PR diff", "installing pytest-cov",
+                  "baseline run 1 of 3", "exporting coverage", "baseline runs 2 and 3"):
+        assert f"chesterton: {stage}" in script
+    # When coverage is empty, the reason is in run 1's own output.
+    assert f"tail -n 40 {RUN_LOGS[0]} >&2" in script
+    # An env var rather than --root-user-action, which older pip rejects.
+    assert "PIP_ROOT_USER_ACTION=ignore python -m pip install" in script
+
+
 async def test_a_baseline_where_nothing_passes_every_run_is_refused(demo_seed):
     runner = a_built_runner(**{RUN_LOGS[1]: STABLE.replace("PASSED", "FAILED")})
 
