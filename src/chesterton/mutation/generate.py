@@ -1,8 +1,11 @@
 """Collect, gate, rank and budget the mutants for one run.
 
-The budget exists because concurrency is capped. 24 simultaneous sandbox
-operations was measured safe (72/72 across three rounds); a run that generated
-200 mutants would queue for ten rounds and stop feeling live, which costs the
+The budget is the spec's: 30-40 mutants per run (section 6). It is not the
+concurrency cap, and must not be derived from it. Execution runs behind
+`asyncio.Semaphore(24)` — 24 simultaneous sandbox operations was measured safe
+(72/72 across three rounds) — and queueing a short second round is exactly what
+that semaphore is for. The budget bounds the run as a whole: one that executed
+200 mutants would queue for nine rounds and stop feeling live, which costs the
 demo more than the extra coverage buys.
 
 Ranking is by operator weight, because under a tight budget the mutations that
@@ -27,8 +30,9 @@ from chesterton.mutation.model import Mutant
 from chesterton.mutation.operators import apply_candidate, find_candidates
 from chesterton.paths import normalise_path
 
-#: Matches the measured safe concurrency. One round, no queueing.
-MUTANT_BUDGET = 24
+#: Spec section 6: 30-40 mutants per run. Behind Semaphore(24) that is one
+#: full round and a short second one; concurrency is the semaphore's job.
+MUTANT_BUDGET = 32
 
 #: Higher is kept first when the budget bites.
 OPERATOR_WEIGHT = {

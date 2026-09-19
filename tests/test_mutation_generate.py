@@ -81,9 +81,10 @@ def test_guard_deletion_outranks_a_boundary_shift():
     assert mutants[0].operator == "delete_guard"
 
 
-def test_the_default_budget_fits_the_measured_concurrency_cap():
-    # 24 concurrent operations was measured safe. A budget far above it queues.
-    assert MUTANT_BUDGET <= 24
+def test_the_default_budget_sits_in_the_specs_range():
+    # Ruling P14: the spec binds — 30-40 mutants per run. The Semaphore(24)
+    # concurrency cap is a separate limit; a second short round is its job.
+    assert 30 <= MUTANT_BUDGET <= 40
 
 
 def test_supplied_llm_mutants_are_gated_alongside_deterministic_ones():
