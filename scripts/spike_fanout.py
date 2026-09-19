@@ -38,6 +38,9 @@ async def one_fork(runner, checkpoint_id: str, test_cmd: str) -> tuple[float, st
         return time.perf_counter() - start, "errored"
 
     elapsed = time.perf_counter() - start
+    if result.error is not None:  # the adapter now reports, not raises
+        print(f"  fork errored: {result.error}")
+        return elapsed, "errored"
     if result.exit_code in (0, 1):  # 1 == tests ran and failed; still a run
         return elapsed, "ran"
     return elapsed, "cmd_failed"

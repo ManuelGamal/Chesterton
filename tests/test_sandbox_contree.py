@@ -87,6 +87,17 @@ def test_the_sdk_surface_this_adapter_depends_on_actually_exists():
     for prop in ("stdout", "stderr", "exit_code"):
         assert isinstance(getattr(ContreeImage, prop), property)
 
+    # A failed operation is signalled by these, and the adapter catches their
+    # common base — if the hierarchy moves, errors would escape as crashes.
+    from contree_sdk.sdk import exceptions
+
+    for name in (
+        "OperationTimedOutError",
+        "FailedOperationError",
+        "CancelledOperationError",
+    ):
+        assert issubclass(getattr(exceptions, name), exceptions.ContreeError)
+
 
 def test_the_adapter_builds_a_real_client_without_network_or_credentials():
     pytest.importorskip("contree_sdk", reason="sandbox extra not installed")
@@ -175,3 +186,51 @@ async def test_bytes_pass_through_and_destinations_use_forward_slashes():
     )
 
     assert image.run_kwargs["files"] == {"repo/widgets/pay.py": b"x = 1\n"}
+
+
+@pytest.mark.parametrize(
+    "name, extra",
+    [
+        ("OperationTimedOutError", {}),
+        ("FailedOperationError", {"error": "boom"}),
+        ("CancelledOperationError", {}),
+    ],
+)
+async def test_a_failed_sandbox_operation_is_an_error_never_a_pass_or_a_kill(
+    name, extra
+):
+    # Measured live: a timeout raises OperationTimedOutError out of
+    # `await image.run(...)`. Propagating it crashed the adapter; reporting it
+    # with any exit code would count it as a pass (0) or a kill (non-zero).
+    exceptions = pytest.importorskip("contree_sdk.sdk.exceptions")
+    failure = getattr(exceptions, name)(operation_uuid=UUID(int=1), **extra)
+    image = _FakeImage(raises=failure)
+
+    result = await a_runner_over(image).run("ckpt", "pytest -q", timeout=5)
+
+    assert result.error is not None
+    assert type(failure).__name__ in result.error
+    assert result.exit_code is None
+    assert result.duration_s is None
+    assert result.checkpoint_id is None
+
+
+async def test_a_command_exiting_non_zero_is_an_ordinary_result_not_an_error():
+    # Measured live: `exit 1` comes back SUCCEEDED with exit_code=1. That is
+    # a killed mutant, and it must read as one.
+    image = _FakeImage(exit_code=1)
+
+    result = await a_runner_over(image).run("ckpt", "pytest -q")
+
+    assert result.error is None
+    assert result.exit_code == 1
+    assert result.stdout == "out"
+    assert result.duration_s == 1.5
+
+
+async def test_an_error_outside_the_sdk_still_propagates():
+    # Only the SDK's own errors become `error`; a bug here must surface.
+    image = _FakeImage(raises=TypeError("a bug in our own code"))
+
+    with pytest.raises(TypeError, match="a bug in our own code"):
+        await a_runner_over(image).run("ckpt", "pytest -q")

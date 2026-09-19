@@ -17,6 +17,9 @@ Surface this file depends on (all confirmed present in 0.3.6):
                      tag=None, timeout=None, disposable=True, ...) -> ContreeImage
         .stdout .stderr .exit_code .elapsed .state  (properties)
         .uuid  -> uuid.UUID   (instance attribute, NOT a str)
+    contree_sdk.sdk.exceptions.ContreeError
+        base of FailedOperationError, CancelledOperationError and
+        OperationTimedOutError, which `await image.run(...)` raises
 
 Two shapes worth knowing. `run()` returns another `ContreeImage`, not a result
 object — the image *is* the checkpoint, so runs chain. And `ContreeImage` is
@@ -167,22 +170,37 @@ class ConTreeSandboxRunner:
         timeout: float | None = None,
     ) -> RunResult:
         sdk = self._handle()
+        from contree_sdk.sdk.exceptions import ContreeError
+
         image = await sdk.images.use(checkpoint_id)
-        result = await image.run(
-            shell=shell,
-            files=_as_upload(files) if files else None,
-            disposable=disposable,
-            tag=tag,
-            timeout=timeout,
-        )
-        # ContreeImage.elapsed reads .result.elapsed_time, and .result raises
-        # RuntimeError unless the run reached SUCCEEDED. Reading it on a failed
-        # run would turn a test failure into a crash.
-        duration_s: float | None = None
         try:
-            duration_s = result.elapsed.total_seconds()
-        except Exception:
-            duration_s = None
+            result = await image.run(
+                shell=shell,
+                files=_as_upload(files) if files else None,
+                disposable=disposable,
+                tag=tag,
+                timeout=timeout,
+            )
+        except ContreeError as exc:
+            # A failed, cancelled or timed-out operation. The SDK marks the
+            # image FAILED and re-raises, so a FAILED image never comes back
+            # from run() — the exception is the only signal there is. It is
+            # an error, never a pass and never a kill. Only the SDK's own
+            # errors are caught: a bug in this code must still surface.
+            return RunResult(
+                stdout="",
+                stderr="",
+                exit_code=None,
+                checkpoint_id=None,
+                duration_s=None,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+        # Reaching here, the image is SUCCEEDED and its result properties are
+        # safe to read. A command that exited non-zero lands here too, as an
+        # ordinary result: measured live 2026-09-19, `exit 1` returned
+        # SUCCEEDED with exit_code=1, while a timeout raised
+        # OperationTimedOutError.
+        #
         # A disposable run persists nothing, so there is no id to fork from.
         # Reporting result.uuid here would let offline code depend on
         # something the fake cannot honestly provide.
@@ -191,7 +209,7 @@ class ConTreeSandboxRunner:
             stderr=result.stderr,
             exit_code=result.exit_code,
             checkpoint_id=None if disposable else str(result.uuid),
-            duration_s=duration_s,
+            duration_s=result.elapsed.total_seconds(),
         )
 
     async def aclose(self) -> None:

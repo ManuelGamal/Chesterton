@@ -20,16 +20,25 @@ class RunResult:
     both the fake and the real adapter must report that the same way — a fake
     that invents an id here would let offline code depend on something the
     live service cannot provide.
+
+    `error` is set when the sandbox OPERATION failed — it timed out, was
+    cancelled, or the service reported it failed — as opposed to the command
+    running and exiting non-zero, which is an ordinary result. An errored run
+    has no exit code: 0 would read as "tests passed" (a survivor) and anything
+    else as "tests failed" (a kill), and it is neither. Consumers must check
+    `error` first and exclude errored runs from statistics entirely.
     """
 
     stdout: str
     stderr: str
-    exit_code: int
+    #: The command's exit status. None exactly when `error` is set.
+    exit_code: int | None
     checkpoint_id: str | None
     #: Wall time of the execution, when the backend reports one. None when the
-    #: run errored — a failed operation has no meaningful duration, and the
-    #: real SDK raises rather than returning one.
+    #: run errored — a failed operation has no meaningful duration.
     duration_s: float | None = None
+    #: Why the sandbox operation produced no result, or None when it did.
+    error: str | None = None
 
 
 @runtime_checkable
