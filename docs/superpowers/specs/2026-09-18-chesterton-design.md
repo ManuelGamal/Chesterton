@@ -677,6 +677,28 @@ committing them. **Acceptance bar: at least one curated seed must produce a
 solver-proved distinguishing input**, since that is the demo's strongest
 single moment and random search cannot substitute for it on camera.
 
+**MEASURED 2026-09-19 (Phase 2, Task 9).** Eligibility on a real seed —
+`IAMconsortium/nomenclature` @ `a0408e52fc6b2402c448c174802c16441326b80c`,
+source tree only — is **77/256 functions = 30%**, the top of the estimate above
+and well clear of the ~10% floor. `scripts/probe_crosshair.py` reproduces it.
+The ceiling is set by annotation discipline, not purity: of the 179 ineligible,
+90 take no arguments, 52 have unannotated arguments, 28 lack a return
+annotation, and only 9 were rejected for an impure call. This codebase scores
+45/71 = 63% and is not representative — we annotate more heavily than the seeds
+do.
+
+Eligibility is a ceiling, not a hit rate. But the acceptance bar is also met in
+principle: `crosshair diffbehavior` on Python 3.13.14 distinguished
+`if amount > balance` from `if amount >= balance` — our own `off_by_one`
+operator — in **0.38s**, reporting `Given: (amount=0, balance=0)` with one
+function returning `0` and the other raising. That is the demo moment, proved
+on the real interpreter rather than assumed.
+
+`crosshair-tool` 0.0.110 is MIT and installs on Python 3.13.14. Note its CLI
+has no top-level `--version` flag (`python -m crosshair --version` exits 2);
+read `crosshair.__version__` instead. **Phase 2b is justified on these
+numbers.**
+
 **Survivor noise.** Triage deserves more of the six weeks than the
 visualization does, even though the visualization is what judges remember.
 
