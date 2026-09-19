@@ -62,7 +62,28 @@ def _files(diff: str) -> list[str]:
     return [l.split(" b/", 1)[1].strip() for l in diff.splitlines() if l.startswith("diff --git ")]
 
 
-def screen_script(original_f2p: list[str], augmented_f2p: list[str]) -> str:
+def selector(tests: list[str], test_files: list[str]) -> str:
+    """pytest arguments selecting a FAIL_TO_PASS list.
+
+    Most SWE-bench tasks list pytest node ids. sympy lists bare function
+    names (`test_idiff`), since its own runner is bin/test. Its tests run
+    under pytest all the same, so bare names are selected with `-k` inside
+    the task's test files. `-k` matches substrings and may select a few
+    extra tests; for a screen that is harmless, since extra tests only need
+    to keep passing.
+    """
+    q = shlex.quote
+    if all("::" in t for t in tests):
+        return " ".join(map(q, tests))
+    return " ".join(map(q, test_files)) + " -k " + q(" or ".join(dict.fromkeys(tests)))
+
+
+def screen_script(
+    original_f2p: list[str],
+    augmented_f2p: list[str],
+    original_files: list[str] = (),
+    augmented_files: list[str] = (),
+) -> str:
     q = shlex.quote
     py = q(PYTHON)
     apply = "git apply --whitespace=nowarn"
@@ -76,11 +97,11 @@ def screen_script(original_f2p: list[str], augmented_f2p: list[str]) -> str:
         f"{{ {apply} {AGENT} || {fuzzy} {AGENT}; }} 2>&1 || "
         "{ echo CHESTERTON_APPLY=agent; exit 0; }",
         f"{apply} {ORIGINAL} || {{ echo CHESTERTON_APPLY=original; exit 0; }}",
-        f"{py} -m pytest -q -p no:cacheprovider {' '.join(map(q, original_f2p))} "
+        f"{py} -m pytest -q -p no:cacheprovider {selector(original_f2p, list(original_files))} "
         "> /tmp/original.txt 2>&1; echo CHESTERTON_ORIGINAL=$?",
         f"{apply} -R {ORIGINAL} || {{ echo CHESTERTON_APPLY=revert; exit 0; }}",
         f"{apply} {AUGMENTED} || {{ echo CHESTERTON_APPLY=augmented; exit 0; }}",
-        f"{py} -m pytest -q -p no:cacheprovider {' '.join(map(q, augmented_f2p))} "
+        f"{py} -m pytest -q -p no:cacheprovider {selector(augmented_f2p, list(augmented_files))} "
         "> /tmp/augmented.txt 2>&1; echo CHESTERTON_AUGMENTED=$?",
         "echo '--- augmented tail'; tail -n 15 /tmp/augmented.txt",
     ])
@@ -108,7 +129,12 @@ async def screen(pool, iid: str, patch_dir: Path) -> dict:
         augmented = await fetch_swebench_row(iid, client=http, datasets=UTBOOST)
 
     base = await pool.runner.use_image(image_for(iid))
-    script = screen_script(_ids(original["FAIL_TO_PASS"]), _ids(augmented["FAIL_TO_PASS"]))
+    script = screen_script(
+        _ids(original["FAIL_TO_PASS"]),
+        _ids(augmented["FAIL_TO_PASS"]),
+        _files(original["test_patch"]),
+        _files(augmented["test_patch"]),
+    )
     summary = json.loads((patch_dir / iid / "summary.json").read_text(encoding="utf-8"))
 
     async def one(entry: dict) -> dict:
