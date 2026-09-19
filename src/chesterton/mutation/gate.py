@@ -19,15 +19,23 @@ from chesterton.mutation.model import Mutant
 
 
 def _normalised(source: str) -> str | None:
-    """Parsed-and-reprinted source, or None when it does not compile.
+    """The source's AST serialised by `ast.dump`, or None if it will not compile.
 
     Comparing dumps rather than text means a pure reformatting counts as no
     change, which is exactly what we want — it is not a mutation.
+
+    Parsing alone is not enough to promise the file will import. `ast.parse`
+    accepts `return` outside a function, `await` outside a coroutine and
+    `break` outside a loop; those are rejected later, by the compiler. A model
+    reply spliced in one indentation level too shallow produces exactly that
+    shape, so the tree is compiled too.
     """
     try:
-        return ast.dump(ast.parse(source))
-    except SyntaxError:
+        tree = ast.parse(source)
+        compile(tree, "<mutant>", "exec", dont_inherit=True)
+    except (SyntaxError, ValueError):  # ValueError: source with a NUL byte
         return None
+    return ast.dump(tree)
 
 
 class MutantGate:

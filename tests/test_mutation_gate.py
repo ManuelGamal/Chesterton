@@ -29,6 +29,15 @@ def test_unparseable_python_is_rejected():
     assert gate.rejected["unparseable"] == 1
 
 
+def test_code_that_parses_but_will_not_compile_is_rejected():
+    # ast.parse accepts a `return` at module level; only the compiler rejects
+    # it. It is the shape a reply spliced one indentation level too shallow
+    # takes, and the file would fail to import — every test errors.
+    gate = MutantGate()
+    assert gate.admit(a_mutant(mutated_src="x = 1\nreturn x\n")) is False
+    assert gate.rejected["unparseable"] == 1
+
+
 def test_a_mutant_identical_to_the_original_is_rejected():
     gate = MutantGate()
     assert gate.admit(a_mutant(mutated_src="x = 1\n")) is False

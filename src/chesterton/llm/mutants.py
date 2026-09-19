@@ -7,6 +7,16 @@ sentence must not cost a whole batch.
 
 A malformed reply yields no mutants rather than raising. The deterministic
 operators are the floor; the model is upside.
+
+`Mutant.mutated_src` is ALWAYS the complete module, from every generator. The
+model is shown only the hunk and replies with replacement text for those
+lines — asking it to echo back a whole file would be unaffordable on a large
+module — so its reply is spliced back into the module here, before a `Mutant`
+is ever built. That is what lets the gate parse a mutant as the file it will
+become: a correctly indented reply for a hunk inside a function parses once
+spliced, and a dedented one is caught as unparseable rather than written to
+the sandbox as a two-line file whose tests all error and read as "killed".
+Parameters named `module_src` are the whole file; `hunk_src` is the fragment.
 """
 
 from __future__ import annotations
@@ -30,20 +40,73 @@ Lines {start}-{end}:
 ```
 
 Propose up to {limit} mutations. Each must be the FULL replacement text for \
-those lines, valid Python, and differ from the original in exactly one way.
+lines {start}-{end} exactly as they should appear in the file — at the same \
+indentation as shown, valid Python in place, and differing from the original \
+in exactly one way.
 
 Reply with JSON only, no prose:
-{{"mutants": [{{"mutated_src": "...", "rationale": "...", \
-"operator": "semantic"}}]}}
+{{"mutants": [{{"mutated_src": "...", "rationale": "..."}}]}}
 """
 
 
 def build_prompt(
-    file: str, source: str, start_line: int, end_line: int, limit: int = 4
+    file: str, hunk_src: str, start_line: int, end_line: int, limit: int = 4
 ) -> str:
     return _PROMPT.format(
-        file=file, source=source, start=start_line, end=end_line, limit=limit
+        file=file, source=hunk_src, start=start_line, end=end_line, limit=limit
     )
+
+
+def _physical_lines(text: str) -> list[str]:
+    """Lines as `ast` and unified diffs number them, each keeping its ending.
+
+    Split on "\\n" only. `str.splitlines` also breaks on form feeds and
+    Unicode separators, which are legal inside Python source and would shift
+    every line number after them — splicing a reply onto the wrong lines.
+    """
+    parts = text.split("\n")
+    lines = [part + "\n" for part in parts[:-1]]
+    if parts[-1]:
+        lines.append(parts[-1])
+    return lines
+
+
+def _check_range(lines: list[str], start_line: int, end_line: int) -> None:
+    if not 1 <= start_line <= end_line <= len(lines):
+        raise ValueError(
+            f"lines {start_line}-{end_line} fall outside a {len(lines)}-line "
+            "module; the hunk and the module are probably from different trees"
+        )
+
+
+def _hunk(module_src: str, start_line: int, end_line: int) -> str:
+    """The hunk's own text, at its real indentation, for the prompt."""
+    lines = _physical_lines(module_src)
+    _check_range(lines, start_line, end_line)
+    return "".join(lines[start_line - 1 : end_line]).rstrip("\r\n")
+
+
+def _splice(module_src: str, start_line: int, end_line: int, reply: str) -> str:
+    """The whole module with lines start..end replaced by the model's text.
+
+    The module's line-ending convention wins over whatever the model sent, and
+    the result ends in a newline exactly when the input did.
+    """
+    lines = _physical_lines(module_src)
+    _check_range(lines, start_line, end_line)
+    newline = "\r\n" if "\r\n" in module_src else "\n"
+
+    body = reply.replace("\r\n", "\n").split("\n")
+    if body and body[-1] == "":
+        body.pop()  # the reply's own trailing newline, not an extra blank line
+
+    after = lines[end_line:]
+    replaced_ended_a_line = lines[end_line - 1].endswith("\n")
+    block = newline.join(body)
+    if body and (after or replaced_ended_a_line):
+        block += newline
+
+    return "".join(lines[: start_line - 1]) + block + "".join(after)
 
 
 def _extract_json(reply: str) -> dict | None:
@@ -59,8 +122,9 @@ def _extract_json(reply: str) -> dict | None:
 
 
 def parse_mutants(
-    reply: str, *, file: str, start_line: int, end_line: int, original_src: str
+    reply: str, *, file: str, start_line: int, end_line: int, module_src: str
 ) -> list[Mutant]:
+    """Turn a model reply for lines start..end into whole-module mutants."""
     parsed = _extract_json(reply)
     if parsed is None:
         return []
@@ -76,8 +140,8 @@ def parse_mutants(
     for entry in entries:
         if not isinstance(entry, dict):
             continue
-        mutated = entry.get("mutated_src")
-        if not isinstance(mutated, str) or not mutated:
+        replacement = entry.get("mutated_src")
+        if not isinstance(replacement, str) or not replacement:
             continue
         mutants.append(
             Mutant(
@@ -85,8 +149,8 @@ def parse_mutants(
                 start_line=start_line,
                 end_line=end_line,
                 operator=str(entry.get("operator", "semantic")),
-                original_src=original_src,
-                mutated_src=mutated,
+                original_src=module_src,
+                mutated_src=_splice(module_src, start_line, end_line, replacement),
                 rationale=str(entry.get("rationale", "")),
                 source="llm",
             )
@@ -95,10 +159,10 @@ def parse_mutants(
 
 
 async def propose(
-    client, *, file: str, source: str, start_line: int, end_line: int
+    client, *, file: str, module_src: str, start_line: int, end_line: int
 ) -> list[Mutant]:
     reply = await client.complete(
-        build_prompt(file, source, start_line, end_line),
+        build_prompt(file, _hunk(module_src, start_line, end_line), start_line, end_line),
         model=EXECUTION_MODEL,
         max_tokens=2048,
     )
@@ -107,5 +171,5 @@ async def propose(
         file=file,
         start_line=start_line,
         end_line=end_line,
-        original_src=source,
+        module_src=module_src,
     )
