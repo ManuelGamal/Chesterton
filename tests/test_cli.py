@@ -75,6 +75,82 @@ def test_seed_records_the_test_scope_passed_with_tests(tmp_path, demo_seed):
     assert seed.test_paths == ("tests/test_pay.py", "tests/test_refund.py")
 
 
+def a_swebench_task(demo_seed):
+    from chesterton.github.swebench import SWEBenchTask
+
+    return SWEBenchTask(
+        instance_id="acme__pay-1",
+        pr=demo_seed.pr,
+        test_paths=("tests/test_pay.py",),
+        image="docker://swebench/sweb.eval.x86_64.acme_1776_pay-1",
+    )
+
+
+def test_seed_from_swebench_defaults_to_its_image_and_test_files(tmp_path, demo_seed):
+    out = tmp_path / "demo.json"
+    asked = []
+
+    async def fetch_swebench(instance_id):
+        asked.append(instance_id)
+        return a_swebench_task(demo_seed)
+
+    code = main(
+        ["seed", "--swebench", "acme__pay-1", "--slug", "demo", "--out", str(out)],
+        runner_factory=a_seedable_runner, fetch_swebench=fetch_swebench,
+    )
+
+    assert code == 0
+    assert asked == ["acme__pay-1"]
+    seed = SeedRecord.from_json(out.read_text(encoding="utf-8"))
+    assert seed.image_ref == "docker://swebench/sweb.eval.x86_64.acme_1776_pay-1"
+    assert seed.test_paths == ("tests/test_pay.py",)
+
+
+def test_explicit_tests_override_the_swebench_scope(tmp_path, demo_seed):
+    out = tmp_path / "demo.json"
+
+    async def fetch_swebench(instance_id):
+        return a_swebench_task(demo_seed)
+
+    main(
+        ["seed", "--swebench", "acme__pay-1", "--slug", "demo", "--out", str(out),
+         "--tests", "tests/test_other.py"],
+        runner_factory=a_seedable_runner, fetch_swebench=fetch_swebench,
+    )
+
+    seed = SeedRecord.from_json(out.read_text(encoding="utf-8"))
+    assert seed.test_paths == ("tests/test_other.py",)
+
+
+def test_an_unreachable_dataset_exits_1_with_the_reason(tmp_path, capsys):
+    from chesterton.github.swebench import SWEBenchError
+
+    async def fetch_swebench(instance_id):
+        raise SWEBenchError("the dataset API failed twice (ReadTimeout: slow)")
+
+    code = main(
+        ["seed", "--swebench", "acme__pay-1", "--slug", "demo",
+         "--out", str(tmp_path / "s.json")],
+        runner_factory=a_seedable_runner, fetch_swebench=fetch_swebench,
+    )
+
+    assert code == 1
+    assert "ReadTimeout" in capsys.readouterr().err
+
+
+def test_a_pr_seed_still_requires_an_image():
+    with pytest.raises(SystemExit):
+        main(["seed", "--pr", "https://github.com/acme/pay/pull/1",
+              "--slug", "demo", "--out", "x.json"])
+
+
+def test_pr_and_swebench_are_mutually_exclusive():
+    with pytest.raises(SystemExit):
+        main(["seed", "--pr", "https://github.com/acme/pay/pull/1",
+              "--swebench", "acme__pay-1", "--image", "x",
+              "--slug", "demo", "--out", "x.json"])
+
+
 def test_run_writes_a_report_and_names_the_undefended_surface(tmp_path, demo_seed, capsys):
     seed_path = tmp_path / "demo.json"
     seed_path.write_text(demo_seed.to_json(), encoding="utf-8")

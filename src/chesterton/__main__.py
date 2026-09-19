@@ -33,6 +33,15 @@ async def _fetch_from_github(url: str):
         return await fetch_pull_request(owner, repo, number, client=http)
 
 
+async def _fetch_swebench(instance_id: str):
+    import httpx
+
+    from chesterton.github.swebench import fetch_swebench_task
+
+    async with httpx.AsyncClient(timeout=60) as http:
+        return await fetch_swebench_task(instance_id, client=http)
+
+
 def _default_runner():
     from chesterton.sandbox.contree import ConTreeSandboxRunner
 
@@ -50,8 +59,19 @@ def build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
 
     seed = commands.add_parser("seed", help="build a seed checkpoint for a PR")
-    seed.add_argument("--pr", required=True, help="GitHub pull request URL")
-    seed.add_argument("--image", required=True, help="image ref, e.g. docker://...")
+    source = seed.add_mutually_exclusive_group(required=True)
+    source.add_argument("--pr", help="GitHub pull request URL")
+    source.add_argument(
+        "--swebench",
+        metavar="INSTANCE_ID",
+        help="a SWE-bench task, e.g. pydata__xarray-7393: its gold patch plus "
+        "its original test_patch, its image and its test files by default",
+    )
+    seed.add_argument(
+        "--image",
+        help="image ref, e.g. docker://...; required with --pr, defaults to "
+        "SWE-bench's own image with --swebench",
+    )
     seed.add_argument("--slug", required=True, help="lowercase letters, digits, hyphens")
     seed.add_argument(
         "--python",
@@ -116,13 +136,27 @@ def _summarise(report: RunReport) -> str:
     return "\n".join(lines)
 
 
-async def _seed(args, runner_factory, fetch) -> int:
-    pr = await fetch(args.pr)
+async def _seed(args, runner_factory, fetch, fetch_swebench) -> int:
+    if args.swebench:
+        from chesterton.github.swebench import SWEBenchError
+
+        try:
+            task = await fetch_swebench(args.swebench)
+        except SWEBenchError as exc:
+            print(f"could not fetch {args.swebench}: {exc}", file=sys.stderr)
+            return 1
+        pr = task.pr
+        image = args.image or task.image
+        # SWE-bench's own scope unless overridden: the test_patch's files.
+        scope = args.tests or list(task.test_paths)
+    else:
+        pr, image, scope = await fetch(args.pr), args.image, args.tests
+
     runner = runner_factory()
     try:
         seed = await build_seed(
-            runner, pr, slug=args.slug, image_ref=args.image,
-            python=args.python, test_paths=args.tests,
+            runner, pr, slug=args.slug, image_ref=image,
+            python=args.python, test_paths=scope,
         )
     except SeedBuildError as exc:
         print(f"seed build failed: {exc}", file=sys.stderr)
@@ -135,6 +169,7 @@ async def _seed(args, runner_factory, fetch) -> int:
         f"{seed.checkpoint_tag}; {len(seed.selectable)} selectable, "
         f"{len(seed.flaky)} flaky, {len(seed.failing)} failing tests -> {args.out}"
     )
+    print(f"  scope: {', '.join(seed.test_paths) or 'the whole suite'}")
     return 0
 
 
@@ -157,11 +192,23 @@ async def _run(args, runner_factory, client_factory) -> int:
     return 0
 
 
-def main(argv=None, *, runner_factory=None, client_factory=None, fetch=None) -> int:
-    args = build_parser().parse_args(argv)
+def main(
+    argv=None, *, runner_factory=None, client_factory=None, fetch=None,
+    fetch_swebench=None,
+) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
     runner_factory = runner_factory or _default_runner
     if args.command == "seed":
-        return asyncio.run(_seed(args, runner_factory, fetch or _fetch_from_github))
+        if args.pr and not args.image:
+            parser.error("--image is required with --pr")
+        return asyncio.run(
+            _seed(
+                args, runner_factory,
+                fetch or _fetch_from_github,
+                fetch_swebench or _fetch_swebench,
+            )
+        )
     return asyncio.run(_run(args, runner_factory, client_factory or _default_client))
 
 
