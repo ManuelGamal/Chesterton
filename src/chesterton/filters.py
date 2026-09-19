@@ -31,8 +31,10 @@ def is_mutable_source(path: str) -> bool:
     parts = normalised.split("/")
     name = parts[-1]
 
-    # Whole-segment matching, not substring: "latest_release.py" is not a test.
-    if any(part in _TEST_DIRS for part in parts[:-1]):
+    # Whole-segment matching, not substring: "latest/" and "contests/" are not
+    # test trees, any more than "latest_release.py" is a test. Casefolded,
+    # because "Tests/" is a test tree on every case-insensitive filesystem.
+    if any(part.casefold() in _TEST_DIRS for part in parts[:-1]):
         return False
     if name == "conftest.py":
         return False
