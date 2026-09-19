@@ -2,6 +2,8 @@ import pytest
 
 from chesterton.seed.outcomes import classify_runs, parse_outcomes
 
+SUMMARY = "=========================== short test summary info ===========================\n"
+
 REPORT = """\
 ============================= test session starts =============================
 collected 3 items
@@ -25,14 +27,35 @@ def test_summary_lines_become_node_id_outcomes():
     }
 
 
+def test_captured_log_lines_are_not_mistaken_for_test_outcomes():
+    # Measured live 2026-09-19 on nomenclature-284: -rA prints captured log
+    # output, and "ERROR    <logger>:<file>:<line>" matched the summary
+    # pattern, filing five log lines as "failing tests".
+    report = """\
+==================================== PASSES ====================================
+------------------------------ Captured log call -------------------------------
+ERROR    nomenclature.core:core.py:74 The validation failed.
+=========================== short test summary info ============================
+PASSED tests/test_core.py::test_region_processing
+1 passed in 0.50s
+"""
+    assert parse_outcomes(report) == {"tests/test_core.py::test_region_processing": "PASSED"}
+
+
+def test_a_report_with_no_summary_section_yields_nothing():
+    # No summary means pytest never got as far as reporting; guessing from
+    # the rest of the output is how log lines became outcomes.
+    assert parse_outcomes("ERROR    app:app.py:3 boom\n") == {}
+
+
 def test_a_teardown_error_after_a_pass_is_not_a_pass():
     # -rA reports both phases for one test; any non-pass must win.
-    report = "PASSED tests/t.py::test_x\nERROR tests/t.py::test_x - RuntimeError\n"
+    report = SUMMARY + "PASSED tests/t.py::test_x\nERROR tests/t.py::test_x - RuntimeError\n"
     assert parse_outcomes(report) == {"tests/t.py::test_x": "ERROR"}
 
 
 def test_a_non_pass_is_not_overwritten_by_a_later_pass():
-    report = "ERROR tests/t.py::test_x - boom\nPASSED tests/t.py::test_x\n"
+    report = SUMMARY + "ERROR tests/t.py::test_x - boom\nPASSED tests/t.py::test_x\n"
     assert parse_outcomes(report) == {"tests/t.py::test_x": "ERROR"}
 
 

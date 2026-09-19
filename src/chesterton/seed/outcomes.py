@@ -29,10 +29,23 @@ PASSED = "PASSED"
 #: are deliberately not matched: a skipped test defends nothing.
 _LINE = re.compile(r"^(PASSED|FAILED|ERROR|XFAIL|XPASS)\s+(\S+)")
 
+#: "=== short test summary info ===". Only lines after it are outcomes.
+#: Measured live 2026-09-19: -rA also prints captured log output, and a log
+#: line "ERROR    nomenclature.core:core.py:74 ..." matched _LINE, filing log
+#: records as failing tests.
+_SUMMARY = re.compile(r"^=+ short test summary info =+\s*$")
+
 
 def parse_outcomes(report: str) -> dict[str, str]:
+    lines = report.splitlines()
+    start = next((i for i, line in enumerate(lines) if _SUMMARY.match(line)), None)
+    if start is None:
+        # No summary means pytest never reached its report. Guessing from
+        # the rest of the output is exactly how log lines became outcomes.
+        return {}
+
     outcomes: dict[str, str] = {}
-    for line in report.splitlines():
+    for line in lines[start + 1 :]:
         match = _LINE.match(line)
         if match is None:
             continue
