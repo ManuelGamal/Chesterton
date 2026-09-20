@@ -88,3 +88,62 @@ def test_a_new_file_reports_all_its_lines():
         "+beta\n"
     )
     assert changed_lines(added_file)["fresh.py"] == [1, 2]
+
+
+# --- tolerant splitting -----------------------------------------------------
+# Live 2026-09-20: agent patches from SWE-bench submissions can be truncated
+# (a hunk header promising more lines than the body carries) or use git's
+# quoted form for non-ASCII paths. unidiff raises on the first and mis-splits
+# the second, which crashed both the benchmark and patch review.
+
+TRUNCATED = (
+    "diff --git a/pkg/a.py b/pkg/a.py\n"
+    "--- a/pkg/a.py\n"
+    "+++ b/pkg/a.py\n"
+    "@@ -1,7 +1,10 @@\n"
+    " def f():\n"
+    "-    return 1\n"
+    "+    return 2\n"
+    # Raw: git writes the octal escapes literally, and a plain Python string
+    # would turn \303\244 into two characters before the parser ever saw it.
+    r'diff --git "a/doc/testim\303\244ge.png" "b/doc/testim\303\244ge.png"' + "\n"
+    "--- a/doc/x.png\n"
+    "+++ b/doc/x.png\n"
+    "@@ -1 +1 @@\n"
+    "-old\n"
+    "+new\n"
+    "diff --git a/tests/test_a.py b/tests/test_a.py\n"
+    "--- a/tests/test_a.py\n"
+    "+++ b/tests/test_a.py\n"
+    "@@ -1 +1,2 @@\n"
+    " import pkg\n"
+    "+assert pkg\n"
+)
+
+
+def test_a_truncated_diff_still_splits_into_its_files():
+    from chesterton.diffing.parse import split_by_file
+
+    sections = split_by_file(TRUNCATED)
+
+    assert [path for path, _ in sections] == [
+        "pkg/a.py",  # noqa: the next entry is git's quoted, UTF-8 encoded path
+        "doc/testimäge.png",
+        "tests/test_a.py",
+    ]
+
+
+def test_each_section_keeps_its_own_text_verbatim():
+    from chesterton.diffing.parse import split_by_file
+
+    sections = dict(split_by_file(TRUNCATED))
+
+    assert sections["pkg/a.py"].startswith("diff --git a/pkg/a.py")
+    assert sections["pkg/a.py"].endswith("+    return 2\n")
+    assert "".join(text for _, text in split_by_file(TRUNCATED)) == TRUNCATED
+
+
+def test_a_diff_with_no_headers_yields_nothing():
+    from chesterton.diffing.parse import split_by_file
+
+    assert split_by_file("not a diff at all\n") == []

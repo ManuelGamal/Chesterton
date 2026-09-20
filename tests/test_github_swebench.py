@@ -116,6 +116,21 @@ def test_agent_edits_to_the_tasks_test_files_are_dropped_as_the_harness_does():
     }
 
 
+def test_a_truncated_agent_patch_is_still_reviewable():
+    # Its hunk header promises 7 source lines and the body carries 3; unidiff
+    # refuses it, `patch --fuzz` applies it, and SWE-bench counted it.
+    truncated = (
+        "diff --git a/xarray/core/indexing.py b/xarray/core/indexing.py\n"
+        "--- a/xarray/core/indexing.py\n+++ b/xarray/core/indexing.py\n"
+        "@@ -1,7 +1,10 @@\n def f(dtype):\n-    return 2\n+    return 3\n"
+    )
+
+    task = with_patch(task_from_row(ROW), truncated, label="agent-x")
+
+    assert "+    return 3" in task.pr.diff
+    assert "def test_stack_keeps_dtype" in task.pr.diff  # the oracle survives
+
+
 def test_an_agent_patch_with_no_source_change_is_refused():
     only_tests = AGENT[AGENT.index("diff --git a/xarray/tests"):]
 

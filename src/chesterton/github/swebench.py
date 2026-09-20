@@ -26,6 +26,7 @@ from dataclasses import dataclass, replace
 import httpx
 from unidiff import PatchSet
 
+from chesterton.diffing.parse import split_by_file
 from chesterton.filters import is_mutable_source
 from chesterton.models import PullRequest
 from chesterton.paths import normalise_path
@@ -110,13 +111,15 @@ def with_patch(task: SWEBenchTask, patch: str, *, label: str) -> SWEBenchTask:
     conflicting edits of one file.
     """
     oracle = set(task.test_paths)
-    kept = [pf for pf in PatchSet(patch) if normalise_path(pf.path) not in oracle]
-    if not any(is_mutable_source(normalise_path(pf.path)) for pf in kept):
+    # Split by header rather than through unidiff: an agent patch can be
+    # truncated, which unidiff refuses and `patch --fuzz` accepts.
+    kept = [(path, text) for path, text in split_by_file(patch) if path not in oracle]
+    if not any(is_mutable_source(path) for path, _ in kept):
         raise ValueError(
             f"the patch has no source change to review once the task's test "
             f"files are set aside ({label})"
         )
-    body = "".join(str(pf) for pf in kept)
+    body = "".join(text for _, text in kept)
     if not body.endswith("\n"):
         body += "\n"
     pr = replace(task.pr, title=f"{task.instance_id}: {label}", diff=body + task.test_patch)

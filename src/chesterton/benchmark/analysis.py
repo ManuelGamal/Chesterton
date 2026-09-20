@@ -32,10 +32,8 @@ from dataclasses import dataclass
 from math import comb
 from typing import Literal
 
-from unidiff import PatchSet
-
+from chesterton.diffing.parse import split_by_file
 from chesterton.filters import is_mutable_source
-from chesterton.paths import normalise_path
 
 Group = Literal["wrong", "control"]
 
@@ -127,12 +125,21 @@ def analyse(pairs: Sequence[tuple[PatchOutcome, PatchOutcome]]) -> Result:
 
 
 def patch_size(diff: str) -> int:
-    """Changed (added plus removed) lines in mutable source files."""
+    """Changed (added plus removed) lines in mutable source files.
+
+    Counted from the diff's own text, not through unidiff: agent patches can
+    be truncated (a hunk header promising more than the body carries), and
+    unidiff raises on those while `patch --fuzz` applies them.
+    """
     size = 0
-    for patched in PatchSet(diff):
-        if not is_mutable_source(normalise_path(patched.path)):
+    for path, section in split_by_file(diff):
+        if not is_mutable_source(path):
             continue
-        size += sum(1 for hunk in patched for line in hunk if line.is_added or line.is_removed)
+        size += sum(
+            1
+            for line in section.splitlines()
+            if line[:1] in "+-" and not line.startswith(("+++", "---"))
+        )
     return size
 
 

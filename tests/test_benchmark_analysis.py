@@ -92,6 +92,21 @@ def test_patch_size_counts_changed_source_lines_only():
     assert patch_size(diff) == 3  # one removed and two added in pkg/a.py
 
 
+def test_patch_size_reads_a_truncated_diff_unidiff_refuses():
+    # Live 2026-09-20: agent patches from SWE-bench submissions can promise
+    # more lines in a hunk header than the body carries. They still apply
+    # under `patch --fuzz`, and SWE-bench counted them, so the benchmark
+    # must read them rather than crash on them.
+    truncated = (
+        "diff --git a/pkg/a.py b/pkg/a.py\n--- a/pkg/a.py\n+++ b/pkg/a.py\n"
+        "@@ -1,7 +1,10 @@\n def f():\n-    return 1\n+    return 2\n"
+        "diff --git a/tests/test_a.py b/tests/test_a.py\n--- a/tests/test_a.py\n"
+        "+++ b/tests/test_a.py\n@@ -1 +1,2 @@\n import pkg\n+assert pkg\n"
+    )
+
+    assert patch_size(truncated) == 2  # one removed, one added, in pkg/a.py only
+
+
 def test_controls_are_matched_on_size_without_replacement_and_deterministically():
     wrong = [("w1", 10), ("w2", 30)]
     controls = [("c1", 9), ("c2", 11), ("c3", 31), ("c4", 100)]
