@@ -1036,9 +1036,14 @@ SWE-bench dataset once per seed, drew HTTP 429, and that error was raised
 outside the per-seed guard. The driver now reads every task's row in one
 scan before seeding, and anything that fails inside one seed's build is
 recorded for that seed. A driver fix only; no outcome definition changes.
-One wrong seaborn-3010 patch (`0070ff86f94b`) cannot be parsed, because
-its first line fuses the `diff --git` and `---` headers. It is excluded
-with that reason, as **Retries** requires.
+Three wrong patches cannot be parsed, and are excluded with their reasons,
+as **Retries** requires: seaborn-3010 `0070ff86f94b` (its first line fuses
+the `diff --git` and `---` headers) and sympy-22714 `62e5a55b2038` and
+`b6e976a792bc` (truncated: a hunk promises more lines than its body
+carries). SWE-bench applied them with fuzzy `patch`, but a truncated hunk
+cannot place its changed lines in post-patch coordinates with certainty,
+and mutating the wrong lines would fail silently. Each exclusion drops its
+whole pair, so the paired tests stay balanced: 151 of 154 pairs remain.
 
 **Unchanged from v1:** the question, the population (the 22 non-Django
 UTBoost instances), the wrong and control definitions, the pairing rule,
