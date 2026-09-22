@@ -967,6 +967,76 @@ the null. Model proposals vary between runs and each patch is run once.
 Tasks contribute unequally. `-k` selection for sympy-style tasks can pull in
 extra tests.
 
+### Study v1 result, as registered (run 2026-09-20)
+
+32 analysed pairs, from 7 tasks. Flagged: wrong 100%, control 88%. **H1: 4
+wrong-only against 0 control-only discordant pairs, exact McNemar p =
+0.0625, not significant at alpha 0.05.** H2: 19 wins, 12 losses, 1 tie,
+exact sign test p = 0.14. This is the v1 result and it stands as reported.
+Outputs: `benchmark/`.
+
+### Study v2 — a NEW study, REGISTERED 2026-09-22, before any v2 run
+
+**Why a second study.** A review of v1's outputs on 2026-09-22 found
+defects in the pipeline, not in the protocol. v2 was designed AFTER seeing
+v1's data, and that is disclosed here: v1 re-scored with defect 1's files
+removed gives H1 p = 0.033. Every change below is a defect fix justified by
+its mechanism, not by its effect on the result. Nothing else changes.
+
+**Defects found in v1, and the fix for each.**
+
+1. **Agent scratch scripts were analysed as source.** 23 of 78 patches
+   created files such as `reproduce_issue.py` and `debug_where2.py` that no
+   test imports. Tier 0 reported every line of them, which alone flagged 8
+   patches (6 controls, 2 wrong) that were clean on the real change. Their
+   hunks also used up the 32-mutant budget: in 8 runs no mutant touched the
+   actual fix. **Fix:** a file the patch CREATED that NO baseline run
+   executed, not even at import, is left out of tier 0, mutation and ddmin
+   (`SeedRecord.unexercised_new_files`). A new module the tests import is
+   executed, so it stays. Excluded files are listed in each run report.
+2. **The rate's denominator counted every line of those files**, because a
+   file with no coverage record fell back to "all changed lines" (one
+   control: 650 against a real 17). **Fix:** the same files are left out of
+   the denominator.
+3. **12 of the 22 tasks screened to nothing usable.** 8 read
+   `apply_failed:augmented`: UTBoost's test patches end without a final
+   newline and `git apply` rejects them as corrupt. 5 sympy tasks read
+   `fails_original` for every patch: "No module named pytest", since
+   SWE-bench runs sympy with `bin/test`. **Fix:** every patch is given a
+   final newline, UTBoost's patch gets the same fuzzy `patch` fallback as
+   the agent patch (checked dry first), and pytest is installed when the
+   image lacks it, in screening and in the seed build.
+4. **Seed-build failure reasons were only printed.** All 21
+   matplotlib-14623 patches touching `axes/_base.py` failed to seed, all 16
+   wrong ones among them, and the reason was lost. **Fix:** each reason is
+   saved as `seeds/<task>/<patch>.error.txt`. This fix is diagnostic only;
+   it changes no outcome.
+
+**Unchanged from v1:** the question, the population (the 22 non-Django
+UTBoost instances), the wrong and control definitions, the pairing rule,
+the Chesterton configuration, the FLAGGED and RATE outcomes, H1 and H2,
+their tests, one-sidedness and alpha 0.05, and reporting whatever the
+result.
+
+**Procedure.** All 22 tasks are re-screened with the fixed screener into a
+fresh copy of the patch directory; no v1 verdict is reused, because fix 3
+can also let a previously unappliable agent patch apply. Pairing is
+recomputed and written once. A seed is keyed by (task, patch), and a v1
+seed is reused for the same patch, since no fix changes anything a seed
+records (the pytest install is a no-op where pytest exists). **Every run is
+new.** Outputs: `benchmark-v2/`.
+
+**Retries.** A seed build or run that fails for an infrastructure reason
+may be retried by re-invoking the resumable driver. A run that completed is
+never rerun, whatever it shows. The report lists every excluded patch and
+the reason for each.
+
+**Known limits, in addition to v1's.** The fixes were chosen knowing the
+direction of their effect on v1's data, so v2's p-values should be read as
+a replication with repaired tooling, not as an untouched confirmatory test.
+Newly screened tasks may change the mix of tasks, and sympy's `-k`
+selection applies to more of the sample.
+
 ## 18. Schedule
 
 | Week | Focus |
