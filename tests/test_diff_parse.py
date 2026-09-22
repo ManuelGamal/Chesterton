@@ -147,3 +147,47 @@ def test_a_diff_with_no_headers_yields_nothing():
     from chesterton.diffing.parse import split_by_file
 
     assert split_by_file("not a diff at all\n") == []
+
+
+# --- files a patch creates --------------------------------------------------
+# Live 2026-09-22: agent patches carry scratch scripts (reproduce_issue.py,
+# debug_where2.py) that no test imports. Telling them apart starts with
+# knowing which files the patch created rather than edited.
+
+SCRATCH = (
+    "diff --git a/pkg/a.py b/pkg/a.py\n"
+    "--- a/pkg/a.py\n"
+    "+++ b/pkg/a.py\n"
+    "@@ -1 +1 @@\n"
+    "-x = 1\n"
+    "+x = 2\n"
+    "diff --git a/reproduce_issue.py b/reproduce_issue.py\n"
+    "new file mode 100644\n"
+    "index 0000000..e69de29\n"
+    "--- /dev/null\n"
+    "+++ b/reproduce_issue.py\n"
+    "@@ -0,0 +1,2 @@\n"
+    "+import pkg\n"
+    "+print(pkg.x)\n"
+)
+
+
+def test_a_created_file_is_reported_and_an_edited_one_is_not():
+    from chesterton.diffing.parse import added_files
+
+    assert added_files(SCRATCH) == {"reproduce_issue.py"}
+
+
+def test_a_created_file_is_found_even_in_a_truncated_diff():
+    from chesterton.diffing.parse import added_files
+
+    # The hunk promises 5 lines and carries 2, which unidiff refuses.
+    truncated = SCRATCH.replace("+1,2 @@", "+1,5 @@")
+
+    assert added_files(truncated) == {"reproduce_issue.py"}
+
+
+def test_a_diff_that_creates_nothing_reports_nothing():
+    from chesterton.diffing.parse import added_files
+
+    assert added_files(TRUNCATED) == set()

@@ -73,6 +73,15 @@ def _files(diff: str) -> list[str]:
     return files
 
 
+def terminated(diff: str) -> str:
+    """A diff whose last line ends in a newline.
+
+    UTBoost's test patches do not, and git rejects the unterminated last line
+    as "corrupt patch". Live 2026-09-22, that excluded 8 whole tasks.
+    """
+    return diff if diff.endswith("\n") else diff + "\n"
+
+
 def selector(tests: list[str], test_files: list[str]) -> str:
     """pytest arguments selecting a FAIL_TO_PASS list.
 
@@ -108,6 +117,11 @@ def screen_script(
         f"{{ {apply} {AGENT} || {fuzzy} {AGENT}; }} 2>&1 || "
         "{ echo CHESTERTON_APPLY=agent; exit 0; }",
         f"{apply} {ORIGINAL} || {{ echo CHESTERTON_APPLY=original; exit 0; }}",
+        # SWE-bench runs sympy with its own bin/test, so those images have no
+        # pytest. Live 2026-09-22, all 5 sympy tasks screened "fails_original"
+        # on "No module named pytest". Installed only when missing.
+        f"{py} -c 'import pytest' 2>/dev/null || "
+        f"PIP_ROOT_USER_ACTION=ignore {py} -m pip install -q pytest",
         f"{py} -m pytest -q -p no:cacheprovider {selector(original_f2p, list(original_files))} "
         "> /tmp/original.txt 2>&1; echo CHESTERTON_ORIGINAL=$?",
         # UTBoost's test patch is written against different starting points
@@ -115,8 +129,12 @@ def screen_script(
         # so revert first), for others it extends them (apply on top). Live
         # 2026-09-20, assuming the first excluded every seaborn, requests and
         # pylint-5859 patch, each with ORIGINAL=0. Try on top, then reverted.
+        # Last, the same fuzzy fallback the agent patch gets, checked dry
+        # first so a half-applied test patch never gets screened.
         f"{apply} {AUGMENTED} 2>&1 || {{ {apply} -R {ORIGINAL} 2>&1 && "
-        f"{apply} {AUGMENTED} 2>&1; }} || {{ echo CHESTERTON_APPLY=augmented; exit 0; }}",
+        f"{apply} {AUGMENTED} 2>&1; }} || "
+        f"{{ patch --dry-run --batch --fuzz=5 -p1 -i {AUGMENTED} >/dev/null && "
+        f"{fuzzy} {AUGMENTED}; }} 2>&1 || {{ echo CHESTERTON_APPLY=augmented; exit 0; }}",
         f"{py} -m pytest -q -p no:cacheprovider {selector(augmented_f2p, list(augmented_files))} "
         "> /tmp/augmented.txt 2>&1; echo CHESTERTON_AUGMENTED=$?",
         "echo '--- augmented tail'; tail -n 15 /tmp/augmented.txt",
@@ -154,7 +172,9 @@ async def screen(pool, iid: str, patch_dir: Path, original: dict, augmented: dic
         if not any(is_mutable_source(f) for f in _files(text)):
             return {**entry, "verdict": "no_source_change"}
         result = await pool.run(base, script, files={
-            AGENT: text, ORIGINAL: original["test_patch"], AUGMENTED: augmented["test_patch"],
+            AGENT: terminated(text),
+            ORIGINAL: terminated(original["test_patch"]),
+            AUGMENTED: terminated(augmented["test_patch"]),
         }, timeout=TIMEOUT_S)
         return {**entry, "verdict": classify(result.error, result.stdout),
                 "tail": (result.stdout or "")[-1500:], "error": result.error}

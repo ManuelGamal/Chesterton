@@ -155,6 +155,24 @@ def test_the_script_checks_the_interpreter_can_import_pytest_first():
     assert script.index("import pytest") < script.index("git apply")
 
 
+
+def test_a_build_told_to_can_install_a_missing_pytest_before_the_check():
+    # SWE-bench runs sympy with bin/test, so its images have no pytest; the
+    # benchmark knows its interpreter is right and opts in (live 2026-09-22).
+    script = build_script("/testbed", f"{TESTBED_PY} -m pytest", python=TESTBED_PY,
+                          install_pytest=True)
+
+    install = script.index(f"{TESTBED_PY} -m pip install -q pytest\n")
+    assert install < script.index("chesterton: checking the interpreter can import pytest")
+    assert f"{TESTBED_PY} -c 'import pytest' 2>/dev/null ||" in script
+
+
+def test_by_default_a_missing_pytest_still_fails_the_build_early():
+    # Without opting in, a missing pytest means the wrong interpreter.
+    script = build_script("/testbed", f"{TESTBED_PY} -m pytest", python=TESTBED_PY)
+
+    assert "-m pip install -q pytest\n" not in script
+
 async def test_the_chosen_interpreter_runs_the_tests_at_run_time_too(demo_seed):
     seed = await build_seed(
         a_built_runner(), demo_seed.pr, slug="demo",

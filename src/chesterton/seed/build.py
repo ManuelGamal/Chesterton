@@ -73,9 +73,20 @@ def build_script(
     python: str = DEFAULT_PYTHON,
     test_paths: Sequence[str] = (),
     coverage_include: Sequence[str] = (),
+    install_pytest: bool = False,
 ) -> str:
     q = shlex.quote
     py = q(python)
+    # Opt-in, for a caller that knows its interpreter is the right one.
+    # SWE-bench runs sympy with bin/test, so those images have no pytest
+    # (live 2026-09-22). Otherwise a missing pytest means the wrong
+    # interpreter, and the check below should fail fast.
+    install = (
+        [f"{py} -c 'import pytest' 2>/dev/null || "
+         f"PIP_ROOT_USER_ACTION=ignore {py} -m pip install -q pytest"]
+        if install_pytest
+        else []
+    )
     # Only the changed sources are ever read back. Live on matplotlib-23314
     # (2026-09-19), exporting per-test contexts for the whole package was
     # OOM-killed after a clean 864-test run.
@@ -88,6 +99,7 @@ def build_script(
             "set -e",
             f"mkdir -p {ARTIFACT_DIR}",
             f"cd {q(workdir)}",
+            *install,
             # First, before anything slow or state-changing. The first live
             # build installed pytest-cov into an interpreter with no pytest
             # and only failed two stages later, on a missing `pandas`.
@@ -150,6 +162,7 @@ async def build_seed(
     test_command: str | None = None,
     test_paths: Sequence[str] = (),
     timeout: float = SEED_TIMEOUT_S,
+    install_pytest: bool = False,
 ) -> SeedRecord:
     if not is_valid_slug(slug):
         raise ValueError(
@@ -165,7 +178,8 @@ async def build_seed(
     tag = seed_tag(slug)
     result = await runner.run(
         base,
-        build_script(workdir, test_command, python, test_paths, coverage_include=targets),
+        build_script(workdir, test_command, python, test_paths, coverage_include=targets,
+                     install_pytest=install_pytest),
         files={DIFF_PATH: pr.diff},
         disposable=False,
         tag=tag,

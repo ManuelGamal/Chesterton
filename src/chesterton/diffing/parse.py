@@ -59,6 +59,19 @@ def split_by_file(diff: str) -> list[tuple[str, str]]:
     return sections
 
 
+def added_files(diff: str) -> set[str]:
+    """The files the diff creates rather than edits.
+
+    Read by header, like split_by_file, so a truncated agent patch still
+    answers. A created file's old side is /dev/null.
+    """
+    return {
+        path
+        for path, section in split_by_file(diff)
+        if re.search(r"^--- /dev/null\s*$", section, re.MULTILINE)
+    }
+
+
 def changed_lines(diff: str) -> dict[str, list[int]]:
     result: dict[str, list[int]] = {}
 

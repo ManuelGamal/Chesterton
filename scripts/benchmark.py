@@ -54,10 +54,15 @@ def slug_for(task: str, patch: str) -> str:
 
 
 def changed_executable_lines(seed: SeedRecord) -> int:
-    """The rate's denominator: changed lines that can actually run."""
+    """The rate's denominator: changed lines that can actually run.
+
+    A scratch script the patch created and nothing ran is left out, as the
+    run leaves it out of tier 0 and mutation (benchmark v2).
+    """
+    exempt = seed.unexercised_new_files()
     total = 0
     for file, lines in changed_lines(seed.pr.diff).items():
-        if not is_mutable_source(file):
+        if not is_mutable_source(file) or file in exempt:
             continue
         runnable = seed.executable.get(file)
         total += len(lines) if runnable is None else len(set(lines) & set(runnable))
@@ -81,6 +86,25 @@ def pair_patches(patch_dir: Path, task: str) -> list[dict]:
     ]
 
 
+def _failure_path(out: Path, task: str, patch: str) -> Path:
+    return out / "seeds" / task / f"{Path(patch).stem}.error.txt"
+
+
+def record_seed_failure(out: Path, task: str, patch: str, exc: BaseException) -> Path:
+    """Keep the whole reason on disk; the console line is cut at 200 chars.
+
+    v1 lost why every matplotlib-14623 patch touching axes/_base.py failed.
+    """
+    path = _failure_path(out, task, patch)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"{type(exc).__name__}: {exc}", encoding="utf-8", newline="\n")
+    return path
+
+
+def clear_seed_failure(out: Path, task: str, patch: str) -> None:
+    _failure_path(out, task, patch).unlink(missing_ok=True)
+
+
 async def seed_for(runner, patch_dir: Path, out: Path, task: str, patch: str) -> Path | None:
     path = out / "seeds" / task / f"{Path(patch).stem}.json"
     if path.exists():
@@ -94,12 +118,18 @@ async def seed_for(runner, patch_dir: Path, out: Path, task: str, patch: str) ->
         seed = await build_seed(
             runner, reviewed.pr, slug=slug_for(task, patch), image_ref=reviewed.image,
             python=PYTHON, test_paths=reviewed.test_paths,
+            # PYTHON is the testbed interpreter for every SWE-bench image, so a
+            # missing pytest is sympy's bin/test setup, not a wrong interpreter.
+            install_pytest=True,
         )
     except Exception as exc:  # one seed failing must not end the study
-        print(f"  seed FAILED {task}/{patch}: {type(exc).__name__}: {str(exc)[:200]}")
+        where = record_seed_failure(out, task, patch, exc)
+        print(f"  seed FAILED {task}/{patch}: {type(exc).__name__}: {str(exc)[:200]} "
+              f"(full reason in {where})")
         return None
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(seed.to_json(), encoding="utf-8", newline="\n")
+    clear_seed_failure(out, task, patch)
     print(f"  seeded {task}/{patch}: {len(seed.selectable)} selectable tests")
     return path
 
