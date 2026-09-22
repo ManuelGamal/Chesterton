@@ -1012,6 +1012,24 @@ its mechanism, not by its effect on the result. Nothing else changes.
    saved as `seeds/<task>/<patch>.error.txt`. This fix is diagnostic only;
    it changes no outcome.
 
+**Amendment 1 — 2026-09-22, during v2's seeding, before any v2 run.**
+Fix 4 did its job on the first builds. Every matplotlib-14623 patch that
+touches `axes/_base.py` passed its baseline run (401 passed, 180 failed, the
+same as the task's other seeds), and then `coverage json --show-contexts`
+was OOM-killed ("Killed") exporting that one file: nearly all ~580 tests run
+nearly every line of it, and the reporter builds the whole line-by-test
+matrix at once. The exclusion is systematic, not random, because all 16 of
+the task's wrong patches touch that file. **Fix:** coverage is exported in
+the sandbox as one record per (file, test) and assembled outside it
+(`covmap/export_coverage.py`, `read_streamed_coverage`). A test runs real
+pytest and coverage, in line and in branch mode, and asserts the streamed
+path gives exactly the coverage map and executable lines the JSON report
+gave, so seeds reused from v1 and seeds built now are comparable. It is an
+infrastructure fix under **Retries** below and changes no outcome
+definition. The first v2 invocation had already started with the old
+exporter, so the affected seeds fail there and are rebuilt when the driver
+is re-invoked; their runs then follow. Completed runs are not rerun.
+
 **Unchanged from v1:** the question, the population (the 22 non-Django
 UTBoost instances), the wrong and control definitions, the pairing rule,
 the Chesterton configuration, the FLAGGED and RATE outcomes, H1 and H2,
