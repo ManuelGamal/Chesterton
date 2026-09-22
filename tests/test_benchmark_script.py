@@ -10,6 +10,9 @@ import importlib.util
 from dataclasses import replace
 from pathlib import Path
 
+from chesterton.github.swebench import task_from_row
+
+from test_github_swebench import ROW, TESTS
 from test_seed_scratch import with_scratch
 
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "benchmark.py"
@@ -54,3 +57,39 @@ def test_a_later_successful_build_clears_the_old_reason(tmp_path):
     benchmark.clear_seed_failure(tmp_path, "task-1", "abc123.diff")
 
     assert not (tmp_path / "seeds" / "task-1" / "abc123.error.txt").exists()
+
+
+# --- the dataset is read once, and no seed can end the study ---------------
+# Live 2026-09-22 (v2 seeding): seed_for downloaded the SWE-bench dataset
+# once PER SEED, outside its try. At 231 builds the dataset API answered
+# HTTP 429, the exception escaped, and the whole study stopped.
+
+async def test_every_task_is_fetched_in_one_scan():
+    calls = []
+
+    async def fetch_rows(ids, **_):
+        calls.append(sorted(ids))
+        return {ROW["instance_id"]: ROW}
+
+    bases, missing = await benchmark.fetch_bases(
+        ["pydata__xarray-7393", "pydata__xarray-7393", "psf__requests-1"], fetch_rows=fetch_rows
+    )
+
+    assert calls == [["psf__requests-1", "pydata__xarray-7393"]]
+    assert bases["pydata__xarray-7393"].instance_id == "pydata__xarray-7393"
+    assert missing == ["psf__requests-1"]
+
+
+async def test_a_seed_that_fails_before_its_build_is_recorded_not_raised(tmp_path):
+    task = "pydata__xarray-7393"
+    (tmp_path / task).mkdir()
+    # Only test files: with_patch refuses it, before any sandbox op.
+    (tmp_path / task / "only-tests.diff").write_text(TESTS, encoding="utf-8")
+    out = tmp_path / "out"
+
+    path = await benchmark.seed_for(
+        None, tmp_path, out, task, "only-tests.diff", base=task_from_row(ROW)
+    )
+
+    assert path is None
+    assert (out / "seeds" / task / "only-tests.error.txt").exists()

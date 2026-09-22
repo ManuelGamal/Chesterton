@@ -38,7 +38,12 @@ from chesterton.benchmark.analysis import (
 )
 from chesterton.diffing.parse import changed_lines
 from chesterton.filters import is_mutable_source
-from chesterton.github.swebench import fetch_swebench_task, with_patch
+from chesterton.github.swebench import (
+    SWEBenchTask,
+    fetch_swebench_rows,
+    task_from_row,
+    with_patch,
+)
 from chesterton.llm.client import NemotronClient
 from chesterton.run import run_seed
 from chesterton.sandbox.contree import ConTreeSandboxRunner
@@ -105,16 +110,33 @@ def clear_seed_failure(out: Path, task: str, patch: str) -> None:
     _failure_path(out, task, patch).unlink(missing_ok=True)
 
 
-async def seed_for(runner, patch_dir: Path, out: Path, task: str, patch: str) -> Path | None:
+async def fetch_bases(tasks, *, fetch_rows=None) -> tuple[dict[str, SWEBenchTask], list[str]]:
+    """Every task's SWE-bench row, in ONE scan of the datasets.
+
+    Live 2026-09-22 (v2): fetching per seed scanned the dataset 231 times,
+    drew HTTP 429, and the error ended the study. Returns the tasks found
+    and, sorted, the ids no dataset holds.
+    """
+    wanted = sorted(set(tasks))
+    if fetch_rows is None:
+        async with httpx.AsyncClient(timeout=60) as http:
+            rows = await fetch_swebench_rows(wanted, client=http)
+    else:
+        rows = await fetch_rows(wanted)
+    bases = {task: task_from_row(rows[task]) for task in wanted if task in rows}
+    return bases, [task for task in wanted if task not in rows]
+
+
+async def seed_for(
+    runner, patch_dir: Path, out: Path, task: str, patch: str, *, base: SWEBenchTask
+) -> Path | None:
     path = out / "seeds" / task / f"{Path(patch).stem}.json"
     if path.exists():
         return path
-    async with httpx.AsyncClient(timeout=60) as http:
-        base = await fetch_swebench_task(task, client=http)
-    reviewed = with_patch(
-        base, (patch_dir / task / patch).read_text(encoding="utf-8"), label=Path(patch).stem
-    )
     try:
+        reviewed = with_patch(
+            base, (patch_dir / task / patch).read_text(encoding="utf-8"), label=Path(patch).stem
+        )
         seed = await build_seed(
             runner, reviewed.pr, slug=slug_for(task, patch), image_ref=reviewed.image,
             python=PYTHON, test_paths=reviewed.test_paths,
@@ -171,16 +193,21 @@ async def main(patch_dir: Path, out: Path, tasks: list[str]) -> int:
     client = NemotronClient()
     try:
         print("\nseeding")
+        wanted = [
+            (p["task"], patch)
+            for p in matched for patch in (p["wrong"], p["control"])
+            if not (out / "seeds" / p["task"] / f"{Path(patch).stem}.json").exists()
+        ]
+        bases, unknown = await fetch_bases([task for task, _ in wanted]) if wanted else ({}, [])
+        for task in unknown:
+            print(f"  {task}: in no SWE-bench dataset, so none of its patches can seed")
         semaphore = asyncio.Semaphore(BUILD_CONCURRENCY)
 
         async def build(task: str, patch: str):
             async with semaphore:
-                return await seed_for(runner, patch_dir, out, task, patch)
+                return await seed_for(runner, patch_dir, out, task, patch, base=bases[task])
 
-        await asyncio.gather(*(
-            build(p["task"], patch)
-            for p in matched for patch in (p["wrong"], p["control"])
-        ))
+        await asyncio.gather(*(build(task, patch) for task, patch in wanted if task in bases))
 
         print("\nrunning")
         outcomes = []
