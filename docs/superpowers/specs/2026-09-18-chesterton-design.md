@@ -1030,6 +1030,16 @@ definition. The first v2 invocation had already started with the old
 exporter, so the affected seeds fail there and are rebuilt when the driver
 is re-invoked; their runs then follow. Completed runs are not rerun.
 
+**Amendment 2 — 2026-09-22, during v2's seeding, before any v2 run.** The
+first invocation stopped partway through seeding: the driver fetched the
+SWE-bench dataset once per seed, drew HTTP 429, and that error was raised
+outside the per-seed guard. The driver now reads every task's row in one
+scan before seeding, and anything that fails inside one seed's build is
+recorded for that seed. A driver fix only; no outcome definition changes.
+One wrong seaborn-3010 patch (`0070ff86f94b`) cannot be parsed, because
+its first line fuses the `diff --git` and `---` headers. It is excluded
+with that reason, as **Retries** requires.
+
 **Unchanged from v1:** the question, the population (the 22 non-Django
 UTBoost instances), the wrong and control definitions, the pairing rule,
 the Chesterton configuration, the FLAGGED and RATE outcomes, H1 and H2,
