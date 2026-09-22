@@ -67,5 +67,32 @@ def executable_lines(report: dict) -> dict[str, list[int]]:
     }
 
 
+def read_streamed_coverage(text: str) -> tuple[CoverageMap, dict[str, list[int]]]:
+    """The coverage map and executable lines from export_coverage.py's output.
+
+    The same answer invert_coverage and executable_lines give for a
+    `coverage json --show-contexts` report, assembled here rather than in
+    the sandbox, where building it ran out of memory.
+    """
+    by_line: dict[str, dict[int, set[str]]] = {}
+    executable: dict[str, list[int]] = {}
+    for raw in text.splitlines():
+        if not raw.strip():
+            continue
+        record = json.loads(raw)
+        path = normalise_path(record["file"])
+        lines = by_line.setdefault(path, {})
+        if "statements" in record:
+            executable[path] = sorted(record["statements"])
+            continue
+        for line in record["lines"]:
+            lines.setdefault(line, set()).add(_clean(record["context"]))
+    covmap = {
+        path: {line: sorted(tests) for line, tests in lines.items()}
+        for path, lines in by_line.items()
+    }
+    return covmap, executable
+
+
 def load_coverage(path: Path) -> CoverageMap:
     return invert_coverage(json.loads(Path(path).read_text()))

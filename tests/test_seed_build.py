@@ -2,11 +2,13 @@ import json
 
 import pytest
 
+from chesterton.covmap.stream import EXPORTER_SOURCE
 from chesterton.sandbox.fake import FakeSandboxRunner
 from chesterton.sandbox.protocol import RunResult
 from chesterton.seed.build import (
     COVERAGE_PATH,
     DIFF_PATH,
+    EXPORTER_PATH,
     RUN_LOGS,
     SeedBuildError,
     build_script,
@@ -28,20 +30,15 @@ FAILED {T_BROKEN} - AssertionError: no
 """
 WOBBLY = STABLE.replace(f"PASSED {T_FLAKY}", f"FAILED {T_FLAKY} - AssertionError")
 
-COVERAGE = {
-    "files": {
-        "/testbed/pay.py": {
-            "contexts": {
-                "1": [f"{T_CHARGE}|run"],
-                "2": [f"{T_CHARGE}|run"],
-                "3": [f"{T_FLAKY}|run"],
-                "4": [f"{T_CHARGE}|run"],
-            },
-            "executed_lines": [1, 2, 3, 4],
-            "missing_lines": [],
-        }
-    }
-}
+# As export_coverage.py streams it: statements, then one record per context.
+COVERAGE = "".join(
+    json.dumps(record) + "\n"
+    for record in (
+        {"file": "pay.py", "statements": [1, 2, 3, 4]},
+        {"file": "pay.py", "context": f"{T_CHARGE}|run", "lines": [1, 2, 4]},
+        {"file": "pay.py", "context": f"{T_FLAKY}|run", "lines": [3]},
+    )
+)
 
 
 def a_built_runner(**overrides) -> FakeSandboxRunner:
@@ -49,7 +46,7 @@ def a_built_runner(**overrides) -> FakeSandboxRunner:
         RUN_LOGS[0]: STABLE,
         RUN_LOGS[1]: WOBBLY,
         RUN_LOGS[2]: STABLE,
-        COVERAGE_PATH: json.dumps(COVERAGE),
+        COVERAGE_PATH: COVERAGE,
         "/testbed/pay.py": HEAD_PAY,
     }
     artifacts.update(overrides)
@@ -84,7 +81,9 @@ async def test_the_build_uploads_the_diff_and_persists_one_tagged_checkpoint(dem
     assert len(runner.calls) == 1
     assert runner.options[0]["disposable"] is False
     assert runner.options[0]["tag"] == seed_tag("demo")
-    assert runner.files_written[0] == {DIFF_PATH: demo_seed.pr.diff}
+    assert runner.files_written[0] == {
+        DIFF_PATH: demo_seed.pr.diff, EXPORTER_PATH: EXPORTER_SOURCE,
+    }
 
 
 async def test_an_errored_build_operation_is_reported_with_its_error(demo_seed):
@@ -141,7 +140,7 @@ def test_every_python_step_uses_the_chosen_interpreter():
     script = build_script("/testbed", f"{TESTBED_PY} -m pytest", python=TESTBED_PY)
 
     assert f"{TESTBED_PY} -m pip install" in script
-    assert f"{TESTBED_PY} -m coverage json" in script
+    assert f"{TESTBED_PY} {EXPORTER_PATH} " in script
     assert script.count(f"{TESTBED_PY} -m pytest") == 3
     assert "\npython -m" not in script and " python -m" not in script
 
@@ -153,7 +152,6 @@ def test_the_script_checks_the_interpreter_can_import_pytest_first():
     assert f"{TESTBED_PY} -c 'import pytest'" in script
     # Before anything slow or state-changing.
     assert script.index("import pytest") < script.index("git apply")
-
 
 
 def test_a_build_told_to_can_install_a_missing_pytest_before_the_check():
@@ -204,7 +202,10 @@ def test_the_coverage_export_is_limited_to_the_changed_sources():
         coverage_include=("lib/a.py", "lib/b.py"),
     )
 
-    assert "coverage json --show-contexts -o /chesterton/coverage.json --include=lib/a.py,lib/b.py" in script
+    assert f"python {EXPORTER_PATH} /testbed lib/a.py lib/b.py > {COVERAGE_PATH}" in script
+    # Live, matplotlib-14623 (2026-09-22): even for ONE file, `coverage json
+    # --show-contexts` was OOM-killed on axes/_base.py. The export streams.
+    assert "coverage json" not in script
 
 
 def test_a_failed_export_does_not_claim_the_data_was_empty():
@@ -221,7 +222,7 @@ async def test_the_build_exports_coverage_for_changed_sources_only(demo_seed):
     await a_seed_from(runner, demo_seed)
 
     [(_, shell)] = runner.calls
-    assert "--include=pay.py" in shell  # not README.md: it is not source
+    assert f"{EXPORTER_PATH} /testbed pay.py >" in shell  # not README.md: not source
 
 
 def test_an_unscoped_build_runs_the_whole_suite_as_before():

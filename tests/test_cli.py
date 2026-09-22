@@ -13,10 +13,10 @@ from conftest import HEAD_PAY, T_CHARGE
 
 def a_seedable_runner():
     log = f"=== short test summary info ===\nPASSED {T_CHARGE}\n"
-    coverage = {"files": {"pay.py": {"contexts": {"2": [f"{T_CHARGE}|run"]}}}}
+    coverage = json.dumps({"file": "pay.py", "context": f"{T_CHARGE}|run", "lines": [2]})
     return FakeSandboxRunner(artifacts={
         RUN_LOGS[0]: log, RUN_LOGS[1]: log, RUN_LOGS[2]: log,
-        COVERAGE_PATH: json.dumps(coverage), "/testbed/pay.py": HEAD_PAY,
+        COVERAGE_PATH: coverage, "/testbed/pay.py": HEAD_PAY,
     })
 
 

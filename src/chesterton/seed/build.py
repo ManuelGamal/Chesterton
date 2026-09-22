@@ -13,12 +13,12 @@ pre-existing failure into fabricated kills.
 
 from __future__ import annotations
 
-import json
 import shlex
 from collections.abc import Sequence
 from datetime import datetime, timezone
 
-from chesterton.covmap.invert import executable_lines, invert_coverage
+from chesterton.covmap.invert import read_streamed_coverage
+from chesterton.covmap.stream import EXPORTER_SOURCE
 from chesterton.diffing.parse import changed_lines
 from chesterton.filters import is_mutable_source
 from chesterton.models import PullRequest
@@ -38,7 +38,8 @@ DEFAULT_PYTHON = "python"
 #: Outside the repository, so nothing here can leak into a test run.
 ARTIFACT_DIR = "/chesterton"
 DIFF_PATH = f"{ARTIFACT_DIR}/pr.diff"
-COVERAGE_PATH = f"{ARTIFACT_DIR}/coverage.json"
+COVERAGE_PATH = f"{ARTIFACT_DIR}/coverage.jsonl"
+EXPORTER_PATH = f"{ARTIFACT_DIR}/export_coverage.py"
 RUN_LOGS = (
     f"{ARTIFACT_DIR}/run1.txt",
     f"{ARTIFACT_DIR}/run2.txt",
@@ -90,7 +91,7 @@ def build_script(
     # Only the changed sources are ever read back. Live on matplotlib-23314
     # (2026-09-19), exporting per-test contexts for the whole package was
     # OOM-killed after a clean 864-test run.
-    include = f" --include={q(','.join(coverage_include))}" if coverage_include else ""
+    targets = "".join(f" {q(path)}" for path in coverage_include)
     # The same scope on every run, so the three runs are comparable and the
     # coverage map covers exactly what run time will select from.
     pytest = f"{test_command} {_PYTEST_FLAGS}" + "".join(f" {q(p)}" for p in test_paths)
@@ -128,10 +129,12 @@ def build_script(
             f"{pytest} --cov --cov-context=test "
             f"--cov-report= > {RUN_LOGS[0]} 2>&1 || true",
             _stage("exporting coverage"),
-            # Two causes seen live, so the message names neither as certain.
-            # "No data to report" means run 1 never got going, and its own
+            # Streamed, one record per (file, test): `coverage json
+            # --show-contexts` built the whole line-by-test matrix and was
+            # OOM-killed on matplotlib's axes/_base.py (live 2026-09-22).
+            # "no coverage data" means run 1 never got going, and its own
             # output says why. "Killed" means the export ran out of memory.
-            f"{py} -m coverage json --show-contexts -o {COVERAGE_PATH}{include} || "
+            f"{py} {EXPORTER_PATH} {q(workdir)}{targets} > {COVERAGE_PATH} || "
             f"{{ echo 'chesterton: coverage export failed (\"Killed\" above means "
             f"out of memory); the end of run 1 follows' >&2; "
             f"tail -n 40 {RUN_LOGS[0]} >&2; exit 1; }}",
@@ -180,7 +183,7 @@ async def build_seed(
         base,
         build_script(workdir, test_command, python, test_paths, coverage_include=targets,
                      install_pytest=install_pytest),
-        files={DIFF_PATH: pr.diff},
+        files={DIFF_PATH: pr.diff, EXPORTER_PATH: EXPORTER_SOURCE},
         disposable=False,
         tag=tag,
         timeout=timeout,
@@ -211,15 +214,10 @@ async def build_seed(
             "selected and every mutant would be uncovered"
         )
 
-    report = json.loads((await runner.read_file(checkpoint, COVERAGE_PATH)).decode("utf-8"))
-    coverage = {
-        relative_to_workdir(path, workdir): lines
-        for path, lines in invert_coverage(report).items()
-    }
-    executable = {
-        relative_to_workdir(path, workdir): lines
-        for path, lines in executable_lines(report).items()
-    }
+    streamed = (await runner.read_file(checkpoint, COVERAGE_PATH)).decode("utf-8")
+    covmap, runnable = read_streamed_coverage(streamed)
+    coverage = {relative_to_workdir(path, workdir): lines for path, lines in covmap.items()}
+    executable = {relative_to_workdir(path, workdir): lines for path, lines in runnable.items()}
 
     sources: dict[str, str] = {}
     for file in targets:
