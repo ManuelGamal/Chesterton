@@ -13,6 +13,8 @@ import json
 import re
 from dataclasses import asdict, dataclass, field
 
+from chesterton.diffing.parse import added_files
+from chesterton.filters import is_mutable_source
 from chesterton.models import CoverageMap, PullRequest
 
 #: Lowercase letters, digits and hyphens: safe inside a checkpoint tag.
@@ -50,6 +52,24 @@ class SeedRecord:
     #: other changed line: a closing bracket cannot be executed by any test.
     #: Empty for seeds built before this was recorded.
     executable: dict[str, list[int]] = field(default_factory=dict)
+
+    def unexercised_new_files(self) -> frozenset[str]:
+        """Files the patch created that no baseline run executed.
+
+        Agent scratch scripts (reproduce_issue.py, debug_*.py) are the case:
+        nothing imports them, so every line would read as untested and their
+        hunks would take the mutant budget from the real change. A created
+        module the tests import has executable lines recorded, so it stays.
+        With no executable data at all there is no evidence either way, and
+        nothing is exempt.
+        """
+        if not self.executable:
+            return frozenset()
+        return frozenset(
+            f
+            for f in added_files(self.pr.diff)
+            if is_mutable_source(f) and f not in self.executable
+        )
 
     def to_json(self) -> str:
         payload = asdict(self)

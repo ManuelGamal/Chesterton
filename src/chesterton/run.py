@@ -21,7 +21,7 @@ import json
 import time
 from collections import Counter
 from collections.abc import Collection
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 
 from chesterton.covmap.invert import IMPORT_TIME
 from chesterton.defended import uncovered_findings
@@ -74,6 +74,8 @@ class RunReport:
     surface: SurfaceResult | None
     ops_used: int
     op_budget: int
+    #: Files the patch created that no baseline run executed; left out.
+    excluded_files: list[str] = field(default_factory=list)
 
     def to_json(self) -> str:
         payload = asdict(self)
@@ -99,7 +101,13 @@ def restrict_coverage(coverage: CoverageMap, allowed: Collection[str]) -> Covera
 
 def _semantic_hunks(seed: SeedRecord, changed: dict[str, list[int]]) -> list[Hunk]:
     hunks: list[Hunk] = []
+    # No hunk means no tier-0 finding, no mutant and no model call. Live in
+    # benchmark v1 (2026-09-22), scratch scripts took all 32 mutant slots in
+    # 8 runs and never reached the real change.
+    exempt = seed.unexercised_new_files()
     for file, source in sorted(seed.sources.items()):
+        if file in exempt:
+            continue
         lines = changed.get(file, [])
         runnable = seed.executable.get(file)
         if runnable is not None:
@@ -204,4 +212,5 @@ async def run_seed(
         surface=surface,
         ops_used=pool.ops_used,
         op_budget=op_budget,
+        excluded_files=sorted(seed.unexercised_new_files()),
     )

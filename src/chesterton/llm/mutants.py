@@ -139,7 +139,7 @@ def _splice(module_src: str, start_line: int, end_line: int, reply: str) -> str:
     return "".join(lines[: start_line - 1]) + block + "".join(after)
 
 
-def _extract_json(reply: str) -> dict | None:
+def extract_json(reply: str) -> dict | None:
     start = reply.find("{")
     end = reply.rfind("}")
     if start < 0 or end <= start:
@@ -155,7 +155,7 @@ def parse_mutants(
     reply: str, *, file: str, start_line: int, end_line: int, module_src: str
 ) -> Proposal:
     """Turn a model reply for lines start..end into whole-module mutants."""
-    parsed = _extract_json(reply)
+    parsed = extract_json(reply)
     if parsed is None or "mutants" not in parsed:
         return Proposal([], failure=MALFORMED)
 

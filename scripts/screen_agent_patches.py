@@ -38,7 +38,7 @@ import httpx
 
 from chesterton.execute.pool import SandboxPool
 from chesterton.filters import is_mutable_source
-from chesterton.github.swebench import fetch_swebench_row, image_for
+from chesterton.github.swebench import fetch_swebench_rows, image_for
 from chesterton.sandbox.contree import ConTreeSandboxRunner
 
 PYTHON = "/opt/miniconda3/envs/testbed/bin/python"
@@ -58,23 +58,84 @@ def _ids(field) -> list[str]:
     return json.loads(field) if isinstance(field, str) else list(field)
 
 
+#: `diff --git a/x b/x`, and the quoted form git uses when a path has
+#: non-ASCII or special characters: `diff --git "a/tem\303\244ge.png" "b/..."`.
+#: Live 2026-09-20, sphinx-7440 carried one and a bare split crashed.
+_HEADER = re.compile(r'^diff --git ("?)a/(?P<a>.+?)\1 ("?)b/(?P<b>.+?)\3$')
+
+
 def _files(diff: str) -> list[str]:
-    return [l.split(" b/", 1)[1].strip() for l in diff.splitlines() if l.startswith("diff --git ")]
+    files = []
+    for line in diff.splitlines():
+        match = _HEADER.match(line)
+        if match:
+            files.append(match.group("b"))
+    return files
 
 
-def screen_script(original_f2p: list[str], augmented_f2p: list[str]) -> str:
+def terminated(diff: str) -> str:
+    """A diff whose last line ends in a newline.
+
+    UTBoost's test patches do not, and git rejects the unterminated last line
+    as "corrupt patch". Live 2026-09-22, that excluded 8 whole tasks.
+    """
+    return diff if diff.endswith("\n") else diff + "\n"
+
+
+def selector(tests: list[str], test_files: list[str]) -> str:
+    """pytest arguments selecting a FAIL_TO_PASS list.
+
+    Most SWE-bench tasks list pytest node ids. sympy lists bare function
+    names (`test_idiff`), since its own runner is bin/test. Its tests run
+    under pytest all the same, so bare names are selected with `-k` inside
+    the task's test files. `-k` matches substrings and may select a few
+    extra tests; for a screen that is harmless, since extra tests only need
+    to keep passing.
+    """
+    q = shlex.quote
+    if all("::" in t for t in tests):
+        return " ".join(map(q, tests))
+    return " ".join(map(q, test_files)) + " -k " + q(" or ".join(dict.fromkeys(tests)))
+
+
+def screen_script(
+    original_f2p: list[str],
+    augmented_f2p: list[str],
+    original_files: list[str] = (),
+    augmented_files: list[str] = (),
+) -> str:
     q = shlex.quote
     py = q(PYTHON)
     apply = "git apply --whitespace=nowarn"
+    # The agent patch applies the way SWE-bench's harness applies it: git
+    # apply, else GNU patch with fuzz. Live 2026-09-19, 10 xarray patches
+    # needed the fallback. Both tools' messages are kept (2>&1), since the
+    # first screen threw git's error away and left only "apply failed".
+    fuzzy = "patch --batch --fuzz=5 -p1 --no-backup-if-mismatch -i"
     return "\n".join([
         "cd /testbed",
-        f"{apply} {AGENT} || {{ echo CHESTERTON_APPLY=agent; exit 0; }}",
+        f"{{ {apply} {AGENT} || {fuzzy} {AGENT}; }} 2>&1 || "
+        "{ echo CHESTERTON_APPLY=agent; exit 0; }",
         f"{apply} {ORIGINAL} || {{ echo CHESTERTON_APPLY=original; exit 0; }}",
-        f"{py} -m pytest -q -p no:cacheprovider {' '.join(map(q, original_f2p))} "
+        # SWE-bench runs sympy with its own bin/test, so those images have no
+        # pytest. Live 2026-09-22, all 5 sympy tasks screened "fails_original"
+        # on "No module named pytest". Installed only when missing.
+        f"{py} -c 'import pytest' 2>/dev/null || "
+        f"PIP_ROOT_USER_ACTION=ignore {py} -m pip install -q pytest",
+        f"{py} -m pytest -q -p no:cacheprovider {selector(original_f2p, list(original_files))} "
         "> /tmp/original.txt 2>&1; echo CHESTERTON_ORIGINAL=$?",
-        f"{apply} -R {ORIGINAL} || {{ echo CHESTERTON_APPLY=revert; exit 0; }}",
-        f"{apply} {AUGMENTED} || {{ echo CHESTERTON_APPLY=augmented; exit 0; }}",
-        f"{py} -m pytest -q -p no:cacheprovider {' '.join(map(q, augmented_f2p))} "
+        # UTBoost's test patch is written against different starting points
+        # per task: for some it replaces the original tests (apply from base,
+        # so revert first), for others it extends them (apply on top). Live
+        # 2026-09-20, assuming the first excluded every seaborn, requests and
+        # pylint-5859 patch, each with ORIGINAL=0. Try on top, then reverted.
+        # Last, the same fuzzy fallback the agent patch gets, checked dry
+        # first so a half-applied test patch never gets screened.
+        f"{apply} {AUGMENTED} 2>&1 || {{ {apply} -R {ORIGINAL} 2>&1 && "
+        f"{apply} {AUGMENTED} 2>&1; }} || "
+        f"{{ patch --dry-run --batch --fuzz=5 -p1 -i {AUGMENTED} >/dev/null && "
+        f"{fuzzy} {AUGMENTED}; }} 2>&1 || {{ echo CHESTERTON_APPLY=augmented; exit 0; }}",
+        f"{py} -m pytest -q -p no:cacheprovider {selector(augmented_f2p, list(augmented_files))} "
         "> /tmp/augmented.txt 2>&1; echo CHESTERTON_AUGMENTED=$?",
         "echo '--- augmented tail'; tail -n 15 /tmp/augmented.txt",
     ])
@@ -96,13 +157,14 @@ def classify(error: str | None, stdout: str) -> str:
     return f"error:augmented_exit_{augmented}"
 
 
-async def screen(pool, iid: str, patch_dir: Path) -> dict:
-    async with httpx.AsyncClient(timeout=60) as http:
-        original = await fetch_swebench_row(iid, client=http)
-        augmented = await fetch_swebench_row(iid, client=http, datasets=UTBOOST)
-
+async def screen(pool, iid: str, patch_dir: Path, original: dict, augmented: dict) -> dict:
     base = await pool.runner.use_image(image_for(iid))
-    script = screen_script(_ids(original["FAIL_TO_PASS"]), _ids(augmented["FAIL_TO_PASS"]))
+    script = screen_script(
+        _ids(original["FAIL_TO_PASS"]),
+        _ids(augmented["FAIL_TO_PASS"]),
+        _files(original["test_patch"]),
+        _files(augmented["test_patch"]),
+    )
     summary = json.loads((patch_dir / iid / "summary.json").read_text(encoding="utf-8"))
 
     async def one(entry: dict) -> dict:
@@ -110,7 +172,9 @@ async def screen(pool, iid: str, patch_dir: Path) -> dict:
         if not any(is_mutable_source(f) for f in _files(text)):
             return {**entry, "verdict": "no_source_change"}
         result = await pool.run(base, script, files={
-            AGENT: text, ORIGINAL: original["test_patch"], AUGMENTED: augmented["test_patch"],
+            AGENT: terminated(text),
+            ORIGINAL: terminated(original["test_patch"]),
+            AUGMENTED: terminated(augmented["test_patch"]),
         }, timeout=TIMEOUT_S)
         return {**entry, "verdict": classify(result.error, result.stdout),
                 "tail": (result.stdout or "")[-1500:], "error": result.error}
@@ -119,15 +183,30 @@ async def screen(pool, iid: str, patch_dir: Path) -> dict:
 
 
 async def main(patch_dir: Path, instance_ids: list[str]) -> int:
+    # One scan per dataset family, not two per task: scanning per task drew
+    # HTTP 429 from the dataset API.
+    async with httpx.AsyncClient(timeout=60) as http:
+        originals = await fetch_swebench_rows(instance_ids, client=http)
+        augmenteds = await fetch_swebench_rows(instance_ids, client=http, datasets=UTBOOST)
+
     runner = ConTreeSandboxRunner()
     total = sum(
         len(json.loads((patch_dir / iid / "summary.json").read_text(encoding="utf-8")))
         for iid in instance_ids
+        if (patch_dir / iid / "summary.json").exists()
     )
     pool = SandboxPool(runner, op_budget=total)
     try:
         for iid in instance_ids:
-            report = await screen(pool, iid, patch_dir)
+            if (patch_dir / iid / "screen.json").exists():
+                # Screening costs one sandbox op per patch; never pay twice.
+                # Delete the file to re-screen a task.
+                print(f"\n{iid}: already screened, skipped")
+                continue
+            if iid not in originals or iid not in augmenteds:
+                print(f"\n{iid}: not in both datasets, skipped")
+                continue
+            report = await screen(pool, iid, patch_dir, originals[iid], augmenteds[iid])
             (patch_dir / iid / "screen.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
             counts = Counter(p["verdict"] for p in report["patches"])
             print(f"\n{iid}: {dict(counts)}")

@@ -5,6 +5,7 @@ from chesterton.diffing.parse import changed_lines
 from chesterton.github.swebench import (
     SWEBenchError,
     fetch_swebench_row,
+    fetch_swebench_rows,
     fetch_swebench_task,
     image_for,
     task_from_row,
@@ -115,6 +116,21 @@ def test_agent_edits_to_the_tasks_test_files_are_dropped_as_the_harness_does():
     }
 
 
+def test_a_truncated_agent_patch_is_still_reviewable():
+    # Its hunk header promises 7 source lines and the body carries 3; unidiff
+    # refuses it, `patch --fuzz` applies it, and SWE-bench counted it.
+    truncated = (
+        "diff --git a/xarray/core/indexing.py b/xarray/core/indexing.py\n"
+        "--- a/xarray/core/indexing.py\n+++ b/xarray/core/indexing.py\n"
+        "@@ -1,7 +1,10 @@\n def f(dtype):\n-    return 2\n+    return 3\n"
+    )
+
+    task = with_patch(task_from_row(ROW), truncated, label="agent-x")
+
+    assert "+    return 3" in task.pr.diff
+    assert "def test_stack_keeps_dtype" in task.pr.diff  # the oracle survives
+
+
 def test_an_agent_patch_with_no_source_change_is_refused():
     only_tests = AGENT[AGENT.index("diff --git a/xarray/tests"):]
 
@@ -184,17 +200,21 @@ async def test_an_unknown_instance_is_a_legible_error():
             await fetch_swebench_task("pydata__xarray-7393", client=http)
 
 
+async def no_sleep(seconds):
+    """The backoff, without the waiting: a test must not spend 7 s retrying."""
+
+
 async def test_a_failing_dataset_api_is_a_legible_error():
     async with a_client({}, fail=500) as http:
         with pytest.raises(SWEBenchError, match="500"):
-            await fetch_swebench_task("pydata__xarray-7393", client=http)
+            await fetch_swebench_task("pydata__xarray-7393", client=http, sleep=no_sleep)
 
 
 async def test_a_network_timeout_is_a_legible_error_not_a_traceback():
     # Live 2026-09-19: an httpx.ReadTimeout escaped the CLI as a traceback.
     async with a_client({}, fail=httpx.ReadTimeout("slow")) as http:
         with pytest.raises(SWEBenchError, match="ReadTimeout"):
-            await fetch_swebench_task("pydata__xarray-7393", client=http)
+            await fetch_swebench_task("pydata__xarray-7393", client=http, sleep=no_sleep)
 
 
 async def test_a_failed_page_is_retried_once():
@@ -207,10 +227,70 @@ async def test_a_failed_page_is_retried_once():
         return httpx.Response(200, json={"rows": [{"row": ROW}], "num_rows_total": 1})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
-        task = await fetch_swebench_task("pydata__xarray-7393", client=http)
+        task = await fetch_swebench_task("pydata__xarray-7393", client=http, sleep=no_sleep)
 
     assert task.pr.number == 7393
     assert len(attempts) == 2
+
+
+async def test_many_instances_are_found_in_one_scan():
+    # Live 2026-09-20: scanning once per instance for 22 tasks sent ~170
+    # requests in a burst and the dataset API answered HTTP 429.
+    rows = filler(150) + [ROW, {**ROW, "instance_id": "acme__other-7"}]
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        offset = int(request.url.params["offset"])
+        page = rows[offset : offset + 100]
+        return httpx.Response(200, json={"rows": [{"row": r} for r in page],
+                                         "num_rows_total": len(rows)})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        found = await fetch_swebench_rows(
+            ["pydata__xarray-7393", "acme__other-7"], client=http,
+            datasets=("princeton-nlp/SWE-bench_Verified",),
+        )
+
+    assert set(found) == {"pydata__xarray-7393", "acme__other-7"}
+    assert len(requests) == 2  # two pages, not two scans
+
+
+async def test_a_rate_limited_page_waits_before_retrying():
+    attempts, waits = [], []
+
+    def handler(request):
+        attempts.append(request)
+        if len(attempts) < 3:
+            return httpx.Response(429, text="slow down", headers={"Retry-After": "7"})
+        return httpx.Response(200, json={"rows": [{"row": ROW}], "num_rows_total": 1})
+
+    async def sleep(seconds):
+        waits.append(seconds)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        task = await fetch_swebench_task("pydata__xarray-7393", client=http, sleep=sleep)
+
+    assert task.pr.number == 7393
+    assert waits == [7.0, 7.0]  # Retry-After honoured, not a bare retry
+
+
+async def test_backoff_grows_when_no_retry_after_is_given():
+    attempts, waits = [], []
+
+    def handler(request):
+        attempts.append(request)
+        if len(attempts) < 4:
+            return httpx.Response(429, text="slow down")
+        return httpx.Response(200, json={"rows": [{"row": ROW}], "num_rows_total": 1})
+
+    async def sleep(seconds):
+        waits.append(seconds)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        await fetch_swebench_task("pydata__xarray-7393", client=http, sleep=sleep)
+
+    assert waits == [1.0, 2.0, 4.0]
 
 
 async def test_a_raw_row_can_be_read_from_any_dataset():

@@ -18,6 +18,7 @@ on Docker Hub.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
@@ -25,6 +26,7 @@ from dataclasses import dataclass, replace
 import httpx
 from unidiff import PatchSet
 
+from chesterton.diffing.parse import split_by_file
 from chesterton.filters import is_mutable_source
 from chesterton.models import PullRequest
 from chesterton.paths import normalise_path
@@ -109,23 +111,32 @@ def with_patch(task: SWEBenchTask, patch: str, *, label: str) -> SWEBenchTask:
     conflicting edits of one file.
     """
     oracle = set(task.test_paths)
-    kept = [pf for pf in PatchSet(patch) if normalise_path(pf.path) not in oracle]
-    if not any(is_mutable_source(normalise_path(pf.path)) for pf in kept):
+    # Split by header rather than through unidiff: an agent patch can be
+    # truncated, which unidiff refuses and `patch --fuzz` accepts.
+    kept = [(path, text) for path, text in split_by_file(patch) if path not in oracle]
+    if not any(is_mutable_source(path) for path, _ in kept):
         raise ValueError(
             f"the patch has no source change to review once the task's test "
             f"files are set aside ({label})"
         )
-    body = "".join(str(pf) for pf in kept)
+    body = "".join(text for _, text in kept)
     if not body.endswith("\n"):
         body += "\n"
     pr = replace(task.pr, title=f"{task.instance_id}: {label}", diff=body + task.test_patch)
     return replace(task, pr=pr)
 
 
-async def _page(client: httpx.AsyncClient, dataset: str, offset: int) -> dict:
-    """One page of rows, retried once. Network errors become SWEBenchError."""
+#: Waits before retry 2, 3 and 4. Live 2026-09-20: a burst of scans drew
+#: HTTP 429, and retrying immediately just drew another.
+_BACKOFF = (1.0, 2.0, 4.0)
+
+
+async def _page(
+    client: httpx.AsyncClient, dataset: str, offset: int, sleep=asyncio.sleep
+) -> dict:
+    """One page of rows, retried with backoff. Failures become SWEBenchError."""
     problem = ""
-    for _ in range(2):
+    for attempt in range(len(_BACKOFF) + 1):
         try:
             response = await client.get(
                 ROWS_API,
@@ -139,13 +150,58 @@ async def _page(client: httpx.AsyncClient, dataset: str, offset: int) -> dict:
             )
         except httpx.HTTPError as exc:
             problem = f"{type(exc).__name__}: {exc}"
-            continue
-        if response.status_code == 200:
-            return response.json()
-        problem = f"HTTP {response.status_code}: {response.text[:200]}"
+            wait = _BACKOFF[attempt] if attempt < len(_BACKOFF) else None
+        else:
+            if response.status_code == 200:
+                return response.json()
+            problem = f"HTTP {response.status_code}: {response.text[:200]}"
+            if attempt >= len(_BACKOFF):
+                wait = None
+            else:
+                # The server's own Retry-After wins over our guess.
+                after = response.headers.get("Retry-After")
+                wait = float(after) if (after or "").strip().isdigit() else _BACKOFF[attempt]
+        if wait is None:
+            break
+        await sleep(wait)
     raise SWEBenchError(
-        f"the dataset API failed twice for {dataset} at offset {offset} ({problem})"
+        f"the dataset API failed {len(_BACKOFF) + 1} times for {dataset} "
+        f"at offset {offset} ({problem})"
     )
+
+
+async def fetch_swebench_rows(
+    instance_ids: Sequence[str],
+    *,
+    client: httpx.AsyncClient,
+    datasets: Sequence[str] = DATASETS,
+    sleep=asyncio.sleep,
+) -> dict[str, dict]:
+    """Rows for many instances in ONE scan per dataset.
+
+    Scanning per instance is what drew HTTP 429 when 22 tasks were collected
+    at once: the datasets are 800 rows, so one scan serves every id.
+    """
+    wanted = set()
+    for instance_id in instance_ids:
+        if not _INSTANCE_ID.match(instance_id):
+            raise ValueError(f"not a SWE-bench instance id: {instance_id!r}")
+        wanted.add(instance_id)
+
+    found: dict[str, dict] = {}
+    for dataset in datasets:
+        offset = 0
+        while wanted - set(found):
+            page = await _page(client, dataset, offset, sleep)
+            rows = page.get("rows", [])
+            for item in rows:
+                row = item["row"]
+                if row["instance_id"] in wanted:
+                    found.setdefault(row["instance_id"], row)
+            offset += PAGE
+            if not rows or offset >= page.get("num_rows_total", 0):
+                break
+    return found
 
 
 async def fetch_swebench_row(
@@ -153,24 +209,15 @@ async def fetch_swebench_row(
     *,
     client: httpx.AsyncClient,
     datasets: Sequence[str] = DATASETS,
+    sleep=asyncio.sleep,
 ) -> dict:
     """The raw dataset row for one instance, from the first dataset holding it."""
-    if not _INSTANCE_ID.match(instance_id):
-        raise ValueError(f"not a SWE-bench instance id: {instance_id!r}")
-
-    for dataset in datasets:
-        offset = 0
-        while True:
-            page = await _page(client, dataset, offset)
-            rows = page.get("rows", [])
-            for item in rows:
-                if item["row"]["instance_id"] == instance_id:
-                    return item["row"]
-            offset += PAGE
-            if not rows or offset >= page.get("num_rows_total", 0):
-                break
-
-    raise SWEBenchError(f"{instance_id} not found in {', '.join(datasets)}")
+    found = await fetch_swebench_rows(
+        [instance_id], client=client, datasets=datasets, sleep=sleep
+    )
+    if instance_id not in found:
+        raise SWEBenchError(f"{instance_id} not found in {', '.join(datasets)}")
+    return found[instance_id]
 
 
 async def fetch_swebench_task(
@@ -178,6 +225,9 @@ async def fetch_swebench_task(
     *,
     client: httpx.AsyncClient,
     datasets: Sequence[str] = DATASETS,
+    sleep=asyncio.sleep,
 ) -> SWEBenchTask:
-    row = await fetch_swebench_row(instance_id, client=client, datasets=datasets)
+    row = await fetch_swebench_row(
+        instance_id, client=client, datasets=datasets, sleep=sleep
+    )
     return task_from_row(row)

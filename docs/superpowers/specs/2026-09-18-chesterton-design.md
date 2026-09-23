@@ -337,6 +337,41 @@ writing a test from a surviving mutant may encode a bug as correct behaviour —
 with execution rather than a disclaimer. Costs two extra sandbox ops. This
 artifact is the JiTTest of §2.
 
+### As built — 2026-09-23
+
+`chesterton review SEED RUN` reads an existing run, so runs and the benchmark
+never change. Decisions the section above left open:
+
+- **Pre-filter:** one rule, right by construction, decided from an `ast`
+  check on the diff between the mutant's WHOLE original and mutated modules
+  (never the display window, which an operator can edit past): every changed
+  line is a single whole-line call to `print` (with no `file=` keyword) or to
+  a logger method (`debug`/`info`/`warning`/`warn`/`error`/`exception`/
+  `critical`/`log` on a logger-named receiver), with no call or other side
+  effect in its arguments. `warnings.warn` is deliberately NOT dismissed - a
+  warning's category is observable (`pytest.warns`, `-W error`, a project's
+  own `filterwarnings = error`) - so it goes to the model like anything else
+  uncertain.
+- **Headline:** confident `untested_invariant`, ranked safety first, then by
+  how many tests ran it and still passed; at most one per hunk and three per
+  run; each confirmed 3 of 3 times, or it is only "worth a look".
+- **A total model outage is an error, not "0 findings".** A bad key or a
+  denied model must not read as a clean review: if every survivor sent to
+  the model came back unavailable, `chesterton review` exits 2 naming the
+  cause instead of writing a report that looks like nothing was found.
+- **Regression test:** for the first headline with a covering test, written
+  by Ultra beside the covering test (`test_chesterton_regression.py`),
+  verified in two forks (exit 0 on the PR, exit 1 on the mutant; any other
+  code proves nothing), repaired once with the failing output. At most 4
+  sandbox ops per review.
+- **The ~1024 reasoning budget above is not enforced.** The code sizes
+  `max_tokens` at 8192 (thinking plus a short JSON answer) and has no way to
+  cap thinking tokens separately from the reply.
+- **Measured before it is pitched:** `scripts/review_study.py` runs it on
+  matplotlib-23314's 13 wrong agent patches and checks each verified test
+  against the gold fix. A test that fails on gold encoded the agent's bug and
+  is reported as such. Exploratory, not a benchmark.
+
 ## 10. Model routing
 
 **Model IDs confirmed live on Token Factory (2026-09-18, via
@@ -915,6 +950,203 @@ with 169 scored PASS by the original harness. Running Chesterton against the
 instances UTBoost identified as having test gaps yields a headline number with
 external ground truth, which is far stronger than a self-reported mutation
 score.
+
+### Pre-registered protocol — REGISTERED 2026-09-20, before any run
+
+Written and committed before the study, so the metric cannot be fitted to the
+data. The analysis is code, not prose: `chesterton/benchmark/analysis.py`,
+with its tests. Changing any of this after a run begins makes a NEW study,
+and the change must be recorded here as one.
+
+**Question.** Among agent patches that all passed SWE-bench's tests, does
+Chesterton flag the ones UTBoost proves wrong more often than matched ones
+UTBoost's tests accept?
+
+**Population.** The 22 non-Django UTBoost instances (Django's suite is not
+pytest). For each, every patch SWE-bench's public submissions resolved,
+deduplicated by edit (`scripts/collect_agent_patches.py`), then screened in
+one sandbox op each (`scripts/screen_agent_patches.py`):
+- **wrong**: passes SWE-bench's original FAIL_TO_PASS, fails UTBoost's;
+- **control**: passes both.
+A patch whose original tests do not pass in our sandbox is excluded, not
+counted either way.
+
+**Pairing.** Each wrong patch is matched to a control from the SAME task,
+nearest by changed source lines, without replacement, ties by name
+(`match_controls`). Unmatched wrong patches are reported and excluded.
+
+**Chesterton configuration.** Identical for both arms: default mutant budget,
+Lightning proposals on, ddmin on, scope = the task's own test files, one run
+per patch.
+
+**Outcomes.**
+- FLAGGED: at least one surviving mutant or tier-0 finding. Provable no-ops
+  never get this far; the gate rejects them (two sound rules only — an added
+  `pass`, and inert unreachable code — everything else stays a survivor).
+- RATE: (survivors + tier-0) per changed executable line, since agent patches
+  add code and raw counts partly measure volume.
+
+**Hypotheses, one-sided, alpha 0.05.**
+- **H1 (primary):** wrong patches are flagged more often than their controls.
+  Exact McNemar on discordant pairs.
+- **H2 (secondary):** within a pair, the wrong patch's rate is higher. Exact
+  sign test, ties dropped.
+
+**Reported whatever the result**, including a null or a reversal, with the
+per-task breakdown, the unmatched and excluded counts, and every survivor
+that is noise rather than a real gap.
+
+**Known limits, stated in advance.** Controls are "correct" only against
+UTBoost's FAIL_TO_PASS, so some are probably wrong too, which biases towards
+the null. Model proposals vary between runs and each patch is run once.
+Tasks contribute unequally. `-k` selection for sympy-style tasks can pull in
+extra tests.
+
+### Study v1 result, as registered (run 2026-09-20)
+
+32 analysed pairs, from 7 tasks. Flagged: wrong 100%, control 88%. **H1: 4
+wrong-only against 0 control-only discordant pairs, exact McNemar p =
+0.0625, not significant at alpha 0.05.** H2: 19 wins, 12 losses, 1 tie,
+exact sign test p = 0.14. This is the v1 result and it stands as reported.
+Outputs: `benchmark/`.
+
+### Study v2 — a NEW study, REGISTERED 2026-09-22, before any v2 run
+
+**Why a second study.** A review of v1's outputs on 2026-09-22 found
+defects in the pipeline, not in the protocol. v2 was designed AFTER seeing
+v1's data, and that is disclosed here: v1 re-scored with defect 1's files
+removed gives H1 p = 0.033. Every change below is a defect fix justified by
+its mechanism, not by its effect on the result. Nothing else changes.
+
+**Defects found in v1, and the fix for each.**
+
+1. **Agent scratch scripts were analysed as source.** 23 of 78 patches
+   created files such as `reproduce_issue.py` and `debug_where2.py` that no
+   test imports. Tier 0 reported every line of them, which alone flagged 8
+   patches (6 controls, 2 wrong) that were clean on the real change. Their
+   hunks also used up the 32-mutant budget: in 8 runs no mutant touched the
+   actual fix. **Fix:** a file the patch CREATED that NO baseline run
+   executed, not even at import, is left out of tier 0, mutation and ddmin
+   (`SeedRecord.unexercised_new_files`). A new module the tests import is
+   executed, so it stays. Excluded files are listed in each run report.
+2. **The rate's denominator counted every line of those files**, because a
+   file with no coverage record fell back to "all changed lines" (one
+   control: 650 against a real 17). **Fix:** the same files are left out of
+   the denominator.
+3. **12 of the 22 tasks screened to nothing usable.** 8 read
+   `apply_failed:augmented`: UTBoost's test patches end without a final
+   newline and `git apply` rejects them as corrupt. 5 sympy tasks read
+   `fails_original` for every patch: "No module named pytest", since
+   SWE-bench runs sympy with `bin/test`. **Fix:** every patch is given a
+   final newline, UTBoost's patch gets the same fuzzy `patch` fallback as
+   the agent patch (checked dry first), and pytest is installed when the
+   image lacks it, in screening and in the seed build.
+4. **Seed-build failure reasons were only printed.** All 21
+   matplotlib-14623 patches touching `axes/_base.py` failed to seed, all 16
+   wrong ones among them, and the reason was lost. **Fix:** each reason is
+   saved as `seeds/<task>/<patch>.error.txt`. This fix is diagnostic only;
+   it changes no outcome.
+
+**Amendment 1 — 2026-09-22, during v2's seeding, before any v2 run.**
+Fix 4 did its job on the first builds. Every matplotlib-14623 patch that
+touches `axes/_base.py` passed its baseline run (401 passed, 180 failed, the
+same as the task's other seeds), and then `coverage json --show-contexts`
+was OOM-killed ("Killed") exporting that one file: nearly all ~580 tests run
+nearly every line of it, and the reporter builds the whole line-by-test
+matrix at once. The exclusion is systematic, not random, because all 16 of
+the task's wrong patches touch that file. **Fix:** coverage is exported in
+the sandbox as one record per (file, test) and assembled outside it
+(`covmap/export_coverage.py`, `read_streamed_coverage`). A test runs real
+pytest and coverage, in line and in branch mode, and asserts the streamed
+path gives exactly the coverage map and executable lines the JSON report
+gave, so seeds reused from v1 and seeds built now are comparable. It is an
+infrastructure fix under **Retries** below and changes no outcome
+definition. The first v2 invocation had already started with the old
+exporter, so the affected seeds fail there and are rebuilt when the driver
+is re-invoked; their runs then follow. Completed runs are not rerun.
+
+**Amendment 2 — 2026-09-22, during v2's seeding, before any v2 run.** The
+first invocation stopped partway through seeding: the driver fetched the
+SWE-bench dataset once per seed, drew HTTP 429, and that error was raised
+outside the per-seed guard. The driver now reads every task's row in one
+scan before seeding, and anything that fails inside one seed's build is
+recorded for that seed. A driver fix only; no outcome definition changes.
+Three wrong patches cannot be parsed, and are excluded with their reasons,
+as **Retries** requires: seaborn-3010 `0070ff86f94b` (its first line fuses
+the `diff --git` and `---` headers) and sympy-22714 `62e5a55b2038` and
+`b6e976a792bc` (truncated: a hunk promises more lines than its body
+carries). SWE-bench applied them with fuzzy `patch`, but a truncated hunk
+cannot place its changed lines in post-patch coordinates with certainty,
+and mutating the wrong lines would fail silently. Each exclusion drops its
+whole pair, so the paired tests stay balanced: 151 of 154 pairs remain.
+
+### Study v2 result, as registered (run 2026-09-22 to 23)
+
+151 analysed pairs, from 16 tasks; 3 pairs excluded (above). Flagged: wrong
+80%, control 77%. **H1: 26 wrong-only against 21 control-only discordant
+pairs, exact McNemar p = 0.28. H2: 65 wins, 68 losses, 18 ties, exact sign
+test p = 0.64. Neither hypothesis is supported.** Outputs: `benchmark-v2/`;
+the result reproduces exactly from the run files. Run health: 5 of 302 runs
+executed no mutant, 12 mutant verdicts were errors, 5 model proposals
+failed, and 55 runs left out scratch files under fix 1.
+
+| task | pairs | wrong flagged | control flagged | wrong-only | control-only |
+|---|---|---|---|---|---|
+| matplotlib-14623 | 16 | 15 | 16 | 0 | 1 |
+| matplotlib-23314 | 13 | 13 | 8 | 5 | 0 |
+| seaborn-3010 | 4 | 2 | 3 | 0 | 1 |
+| requests-863 | 2 | 2 | 1 | 1 | 0 |
+| xarray-3305 | 3 | 3 | 3 | 0 | 0 |
+| xarray-4687 | 12 | 12 | 12 | 0 | 0 |
+| pylint-5859 | 4 | 4 | 4 | 0 | 0 |
+| pylint-7080 | 1 | 1 | 1 | 0 | 0 |
+| scikit-learn-14087 | 5 | 5 | 5 | 0 | 0 |
+| scikit-learn-14894 | 1 | 1 | 1 | 0 | 0 |
+| sympy-16450 | 6 | 3 | 1 | 3 | 1 |
+| sympy-17655 | 32 | 21 | 31 | 1 | 11 |
+| sympy-18621 | 3 | 3 | 3 | 0 | 0 |
+| sympy-20154 | 1 | 0 | 1 | 0 | 1 |
+| sympy-21847 | 16 | 16 | 13 | 3 | 0 |
+| sympy-22714 | 32 | 20 | 13 | 13 | 6 |
+
+sympy-23117's screen marked all 38 of its patches wrong and none correct,
+so UTBoost's augmented test there most likely fails on any fix. With no
+control it formed no pair and does not enter the result.
+
+**Exploratory, not confirmatory.** No patch in either arm was flagged by
+tier 0 alone, so every flag came from a surviving mutant, and the flag is
+in effect "the suite leaves some mutant of the patch alive". That holds for
+about four in five agent patches whether UTBoost accepts them or not, which
+is the §2 critique measured on our own data: survival alone does not
+separate wrong patches from accepted ones. Effects vary by task, from
+matplotlib-23314 (13 of 13 rate wins) to sympy-17655 (28 of 32 losses).
+Any claim built on a per-task pattern would need its own pre-registration
+and fresh data.
+
+**Unchanged from v1:** the question, the population (the 22 non-Django
+UTBoost instances), the wrong and control definitions, the pairing rule,
+the Chesterton configuration, the FLAGGED and RATE outcomes, H1 and H2,
+their tests, one-sidedness and alpha 0.05, and reporting whatever the
+result.
+
+**Procedure.** All 22 tasks are re-screened with the fixed screener into a
+fresh copy of the patch directory; no v1 verdict is reused, because fix 3
+can also let a previously unappliable agent patch apply. Pairing is
+recomputed and written once. A seed is keyed by (task, patch), and a v1
+seed is reused for the same patch, since no fix changes anything a seed
+records (the pytest install is a no-op where pytest exists). **Every run is
+new.** Outputs: `benchmark-v2/`.
+
+**Retries.** A seed build or run that fails for an infrastructure reason
+may be retried by re-invoking the resumable driver. A run that completed is
+never rerun, whatever it shows. The report lists every excluded patch and
+the reason for each.
+
+**Known limits, in addition to v1's.** The fixes were chosen knowing the
+direction of their effect on v1's data, so v2's p-values should be read as
+a replication with repaired tooling, not as an untouched confirmatory test.
+Newly screened tasks may change the mix of tasks, and sympy's `-k`
+selection applies to more of the sample.
 
 ## 18. Schedule
 

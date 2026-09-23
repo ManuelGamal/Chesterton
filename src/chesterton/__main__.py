@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
 from pathlib import Path
 
@@ -103,6 +104,13 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--no-llm", action="store_true", help="deterministic mutants only")
     run.add_argument("--no-reduce", action="store_true", help="skip ddmin")
     run.add_argument("--op-budget", type=int, default=RUN_OP_BUDGET)
+
+    review = commands.add_parser(
+        "review", help="triage a run's survivors and write a verified regression test"
+    )
+    review.add_argument("seed", type=Path, help="a seed record written by `seed`")
+    review.add_argument("run", type=Path, help="a run report written by `run`")
+    review.add_argument("--out", required=True, type=Path)
     return parser
 
 
@@ -214,6 +222,55 @@ async def _run(args, runner_factory, client_factory) -> int:
     return 0
 
 
+def _summarise_review(review) -> str:
+    t = review.triage
+    lines = [
+        f"{review.slug}: {len(t.headline)} headline, {len(t.worth_a_look)} worth a look, "
+        f"{len(t.dismissed)} dismissed; {t.model_calls} triage calls, "
+        f"{review.ops_used} sandbox ops, {review.wall_s:.1f}s",
+    ]
+    for f in t.headline:
+        ev, c = f.evidence, f.classification
+        lines.append(f"  {ev.file}:{ev.start_line}-{ev.end_line} [{c.category}] {c.explanation}")
+    test = review.regression
+    if test is not None and test.verified:
+        lines.append(f"  regression test {test.path}: verified (passes on the PR, fails on the mutant)")
+        lines.append(test.source.rstrip())
+    elif test is not None:
+        why = test.verification.status if test.verification else (test.note or "no test written")
+        lines.append(f"  no verified regression test ({why})")
+    return "\n".join(lines)
+
+
+async def _review(args, runner_factory, client_factory) -> int:
+    from chesterton.review import review_run
+    from chesterton.triage.classify import ModelUnavailable
+
+    for path, what in ((args.seed, "seed"), (args.run, "run report")):
+        if not path.is_file():
+            print(f"no {what} at {path}", file=sys.stderr)
+            return 1
+    seed = SeedRecord.from_json(args.seed.read_text(encoding="utf-8"))
+    report = json.loads(args.run.read_text(encoding="utf-8"))
+    runner = runner_factory()
+    try:
+        review = await review_run(seed, report, runner, client_factory())
+    except ValueError as exc:
+        # The seed and the run report do not belong together (F5).
+        print(str(exc), file=sys.stderr)
+        return 1
+    except ModelUnavailable as exc:
+        # A total model outage must not look like a clean "0 findings"
+        # review (F3): nothing is written, and the exit code says so.
+        print(f"{exc} (check NEBIUS_API_KEY and model access)", file=sys.stderr)
+        return 2
+    finally:
+        await runner.aclose()
+    _write(args.out, review.to_json())
+    print(_summarise_review(review))
+    return 0
+
+
 def main(
     argv=None, *, runner_factory=None, client_factory=None, fetch=None,
     fetch_swebench=None,
@@ -234,6 +291,8 @@ def main(
                 fetch_swebench or _fetch_swebench,
             )
         )
+    if args.command == "review":
+        return asyncio.run(_review(args, runner_factory, client_factory or _default_client))
     return asyncio.run(_run(args, runner_factory, client_factory or _default_client))
 
 

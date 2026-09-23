@@ -25,6 +25,74 @@ import warnings
 from chesterton.mutation.model import Mutant
 
 
+#: Statements after which the rest of their block can never run.
+_TERMINAL = (ast.Return, ast.Raise, ast.Continue, ast.Break)
+
+
+def _inert(statement: ast.stmt) -> bool:
+    """True when an UNREACHABLE statement's mere presence changes nothing.
+
+    Dead code is not always inert. A name bound anywhere in a function is
+    local to all of it, so `return x` followed by `x = 1` raises
+    UnboundLocalError; a `yield` anywhere makes the function a generator;
+    `global`/`nonlocal` change scope for the whole block. Any of those, and
+    the statement stays.
+    """
+    for node in ast.walk(statement):
+        if isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load):
+            return False
+        if isinstance(node, (
+            ast.Global, ast.Nonlocal, ast.Yield, ast.YieldFrom, ast.Import,
+            ast.ImportFrom, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef,
+            ast.NamedExpr,
+        )):
+            return False
+        if isinstance(node, ast.ExceptHandler) and node.name:
+            return False
+        if isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name:
+            return False
+        if isinstance(node, ast.MatchMapping) and node.rest:
+            return False
+    return True
+
+
+def _tidy(block: list[ast.stmt]) -> list[ast.stmt]:
+    kept: list[ast.stmt] = []
+    for index, statement in enumerate(block):
+        kept.append(statement)
+        if isinstance(statement, _TERMINAL):
+            tail = block[index + 1 :]
+            if not all(_inert(s) for s in tail):
+                kept.extend(tail)
+            break
+    real = [s for s in kept if not isinstance(s, ast.Pass)]
+    return real or [ast.Pass()]
+
+
+class _Behaviour(ast.NodeTransformer):
+    """Rewrites a tree to what it DOES, under two provably sound rules.
+
+    1. A `pass` beside other statements in a block does nothing.
+    2. Inert statements after `return`, `raise`, `continue` or `break` never
+       run, and (see _inert) their presence changes nothing either.
+
+    Nothing else. `is None` vs `== None`, `not x` vs `x is False` and
+    annotation or docstring changes are all observable in some program, via
+    a custom __eq__, a non-bool value, or introspection, so none is erased.
+    """
+
+    def generic_visit(self, node: ast.AST) -> ast.AST:
+        super().generic_visit(node)
+        for field, value in ast.iter_fields(node):
+            if isinstance(value, list) and value and all(isinstance(v, ast.stmt) for v in value):
+                setattr(node, field, _tidy(value))
+        return node
+
+
+def _behaviour(tree: ast.Module) -> str:
+    return ast.dump(_Behaviour().visit(tree))
+
+
 def _normalised(source: str) -> str | None:
     """The source's AST serialised by `ast.dump`, or None if it will not compile.
 
@@ -86,6 +154,7 @@ class MutantGate:
     def __init__(self) -> None:
         self._seen: set[str] = set()
         self._originals: dict[str, str | None] = {}
+        self._behaviours: dict[str, str] = {}
         self.rejected: dict[str, int] = {}
 
     def _reject(self, reason: str) -> bool:
@@ -113,6 +182,14 @@ class MutantGate:
         if mutated is None:
             return self._reject("unparseable")
 
+        # Both compile, and they differ as text. Do they differ in what they
+        # DO? A provable no-op survives every suite and would be scored as a
+        # behaviour change the tests permit (live: `pass` after a `raise`).
+        if original is not None and self._behaviour_of(mutant.mutated_src) == (
+            self._behaviour_of(mutant.original_src)
+        ):
+            return self._reject("no_op")
+
         if mutant.content_hash in self._seen:
             return self._reject("duplicate")
 
@@ -124,3 +201,9 @@ class MutantGate:
         if source not in self._originals:
             self._originals[source] = _normalised(source)
         return self._originals[source]
+
+    def _behaviour_of(self, source: str) -> str:
+        """`_behaviour` of source already known to compile, memoised."""
+        if source not in self._behaviours:
+            self._behaviours[source] = _behaviour(ast.parse(source))
+        return self._behaviours[source]

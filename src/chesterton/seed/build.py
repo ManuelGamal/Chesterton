@@ -13,12 +13,12 @@ pre-existing failure into fabricated kills.
 
 from __future__ import annotations
 
-import json
 import shlex
 from collections.abc import Sequence
 from datetime import datetime, timezone
 
-from chesterton.covmap.invert import executable_lines, invert_coverage
+from chesterton.covmap.invert import read_streamed_coverage
+from chesterton.covmap.stream import EXPORTER_SOURCE
 from chesterton.diffing.parse import changed_lines
 from chesterton.filters import is_mutable_source
 from chesterton.models import PullRequest
@@ -38,7 +38,8 @@ DEFAULT_PYTHON = "python"
 #: Outside the repository, so nothing here can leak into a test run.
 ARTIFACT_DIR = "/chesterton"
 DIFF_PATH = f"{ARTIFACT_DIR}/pr.diff"
-COVERAGE_PATH = f"{ARTIFACT_DIR}/coverage.json"
+COVERAGE_PATH = f"{ARTIFACT_DIR}/coverage.jsonl"
+EXPORTER_PATH = f"{ARTIFACT_DIR}/export_coverage.py"
 RUN_LOGS = (
     f"{ARTIFACT_DIR}/run1.txt",
     f"{ARTIFACT_DIR}/run2.txt",
@@ -73,13 +74,24 @@ def build_script(
     python: str = DEFAULT_PYTHON,
     test_paths: Sequence[str] = (),
     coverage_include: Sequence[str] = (),
+    install_pytest: bool = False,
 ) -> str:
     q = shlex.quote
     py = q(python)
+    # Opt-in, for a caller that knows its interpreter is the right one.
+    # SWE-bench runs sympy with bin/test, so those images have no pytest
+    # (live 2026-09-22). Otherwise a missing pytest means the wrong
+    # interpreter, and the check below should fail fast.
+    install = (
+        [f"{py} -c 'import pytest' 2>/dev/null || "
+         f"PIP_ROOT_USER_ACTION=ignore {py} -m pip install -q pytest"]
+        if install_pytest
+        else []
+    )
     # Only the changed sources are ever read back. Live on matplotlib-23314
     # (2026-09-19), exporting per-test contexts for the whole package was
     # OOM-killed after a clean 864-test run.
-    include = f" --include={q(','.join(coverage_include))}" if coverage_include else ""
+    targets = "".join(f" {q(path)}" for path in coverage_include)
     # The same scope on every run, so the three runs are comparable and the
     # coverage map covers exactly what run time will select from.
     pytest = f"{test_command} {_PYTEST_FLAGS}" + "".join(f" {q(p)}" for p in test_paths)
@@ -88,6 +100,7 @@ def build_script(
             "set -e",
             f"mkdir -p {ARTIFACT_DIR}",
             f"cd {q(workdir)}",
+            *install,
             # First, before anything slow or state-changing. The first live
             # build installed pytest-cov into an interpreter with no pytest
             # and only failed two stages later, on a missing `pandas`.
@@ -96,7 +109,14 @@ def build_script(
             "import pytest; find the right interpreter with "
             "scripts/probe_interpreter.py and pass --python' >&2; exit 1; }",
             _stage("applying the PR diff"),
-            f"git apply --whitespace=nowarn {DIFF_PATH}",
+            # SWE-bench's harness falls back to GNU patch when git apply
+            # refuses, so patches it counted as resolved must apply here too.
+            # Live 2026-09-19: 10 xarray agent patches lack a trailing context
+            # line; git apply calls them corrupt, patch applied all 10. git
+            # apply is all-or-nothing, so falling back after it is safe. No
+            # .orig backups: they would sit in the repository under test.
+            f"git apply --whitespace=nowarn {DIFF_PATH} || "
+            f"patch --batch --fuzz=5 -p1 --no-backup-if-mismatch -i {DIFF_PATH}",
             _stage("installing pytest-cov"),
             # Into the SAME interpreter the tests run under. The env var
             # silences pip's root-user warning, which otherwise fills stderr.
@@ -109,10 +129,12 @@ def build_script(
             f"{pytest} --cov --cov-context=test "
             f"--cov-report= > {RUN_LOGS[0]} 2>&1 || true",
             _stage("exporting coverage"),
-            # Two causes seen live, so the message names neither as certain.
-            # "No data to report" means run 1 never got going, and its own
+            # Streamed, one record per (file, test): `coverage json
+            # --show-contexts` built the whole line-by-test matrix and was
+            # OOM-killed on matplotlib's axes/_base.py (live 2026-09-22).
+            # "no coverage data" means run 1 never got going, and its own
             # output says why. "Killed" means the export ran out of memory.
-            f"{py} -m coverage json --show-contexts -o {COVERAGE_PATH}{include} || "
+            f"{py} {EXPORTER_PATH} {q(workdir)}{targets} > {COVERAGE_PATH} || "
             f"{{ echo 'chesterton: coverage export failed (\"Killed\" above means "
             f"out of memory); the end of run 1 follows' >&2; "
             f"tail -n 40 {RUN_LOGS[0]} >&2; exit 1; }}",
@@ -143,6 +165,7 @@ async def build_seed(
     test_command: str | None = None,
     test_paths: Sequence[str] = (),
     timeout: float = SEED_TIMEOUT_S,
+    install_pytest: bool = False,
 ) -> SeedRecord:
     if not is_valid_slug(slug):
         raise ValueError(
@@ -158,8 +181,9 @@ async def build_seed(
     tag = seed_tag(slug)
     result = await runner.run(
         base,
-        build_script(workdir, test_command, python, test_paths, coverage_include=targets),
-        files={DIFF_PATH: pr.diff},
+        build_script(workdir, test_command, python, test_paths, coverage_include=targets,
+                     install_pytest=install_pytest),
+        files={DIFF_PATH: pr.diff, EXPORTER_PATH: EXPORTER_SOURCE},
         disposable=False,
         tag=tag,
         timeout=timeout,
@@ -190,15 +214,10 @@ async def build_seed(
             "selected and every mutant would be uncovered"
         )
 
-    report = json.loads((await runner.read_file(checkpoint, COVERAGE_PATH)).decode("utf-8"))
-    coverage = {
-        relative_to_workdir(path, workdir): lines
-        for path, lines in invert_coverage(report).items()
-    }
-    executable = {
-        relative_to_workdir(path, workdir): lines
-        for path, lines in executable_lines(report).items()
-    }
+    streamed = (await runner.read_file(checkpoint, COVERAGE_PATH)).decode("utf-8")
+    covmap, runnable = read_streamed_coverage(streamed)
+    coverage = {relative_to_workdir(path, workdir): lines for path, lines in covmap.items()}
+    executable = {relative_to_workdir(path, workdir): lines for path, lines in runnable.items()}
 
     sources: dict[str, str] = {}
     for file in targets:

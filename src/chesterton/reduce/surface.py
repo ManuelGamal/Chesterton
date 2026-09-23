@@ -53,6 +53,13 @@ def _outcome(result: RunResult) -> Outcome:
 
 async def undefended_surface(pool: SandboxPool, seed: SeedRecord) -> SurfaceResult:
     hunks, skipped = patch_hunks(seed.pr.diff)
+    # Reverting a scratch script nobody runs always "holds", so ddmin would
+    # call it undefended. It is not part of the program under test.
+    exempt = seed.unexercised_new_files()
+    excluded = {h.file for h in hunks if h.file in exempt}
+    if excluded:
+        skipped["unexercised_new_file"] = len(excluded)
+        hunks = [h for h in hunks if h.file not in excluded]
     labels = tuple(hunk.label for hunk in hunks)
     if not hunks:
         return SurfaceResult(

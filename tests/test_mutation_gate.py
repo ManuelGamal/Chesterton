@@ -135,3 +135,79 @@ def test_content_hash_ignores_rationale_and_source():
     left = a_mutant(source="deterministic", rationale="a")
     right = a_mutant(source="llm", rationale="b")
     assert left.content_hash == right.content_hash
+
+
+# --- provable no-ops --------------------------------------------------------
+# Only two rules, both sound. A surviving no-op is scored as "a behaviour
+# change the tests permit", which is false, so rejecting them before they
+# cost an op is worth doing, but only where it is PROVABLE. Everything else
+# (`is None` vs `== None`, `not x` vs `x is False`, `stale = 1`) stays a
+# survivor: a custom __eq__ or a non-bool value makes each one observable.
+
+GUARD = (
+    "def charge(amount):\n"
+    "    if not amount:\n"
+    '        raise ValueError("required")\n'
+    "    return amount\n"
+)
+
+
+def rejected_as(original: str, mutated: str) -> dict:
+    gate = MutantGate()
+    gate.admit(a_mutant(original_src=original, mutated_src=mutated))
+    return gate.rejected
+
+
+def test_a_pass_added_beside_other_statements_is_a_no_op():
+    mutated = GUARD.replace("    return amount\n", "    pass\n    return amount\n")
+    assert rejected_as(GUARD, mutated) == {"no_op": 1}
+
+
+def test_code_after_a_raise_that_binds_nothing_is_a_no_op():
+    # Live, nomenclature-284: the model put `pass` after the raise and the
+    # "survivor" dragged the score to 75%.
+    mutated = GUARD.replace(
+        '        raise ValueError("required")\n',
+        '        raise ValueError("required")\n        log(amount)\n',
+    )
+    assert rejected_as(GUARD, mutated) == {"no_op": 1}
+
+
+def test_replacing_a_blocks_only_statement_with_pass_is_a_real_change():
+    mutated = GUARD.replace('        raise ValueError("required")\n', "        pass\n")
+    assert rejected_as(GUARD, mutated) == {}
+
+
+def test_an_unreachable_assignment_is_not_a_no_op_because_it_binds_a_local():
+    # `return x` then `x = 1` makes x local to the function, so the return
+    # raises UnboundLocalError. Deleting the dead assignment changes that.
+    original = "x = 5\ndef f():\n    return x\n"
+    mutated = "x = 5\ndef f():\n    return x\n    x = 1\n"
+
+    assert rejected_as(original, mutated) == {}
+
+    namespace: dict = {}
+    exec(mutated, namespace)
+    try:
+        namespace["f"]()
+    except UnboundLocalError:
+        pass  # the dead assignment really is observable
+    else:
+        raise AssertionError("expected UnboundLocalError")
+
+
+def test_an_unreachable_yield_is_not_a_no_op_because_it_makes_a_generator():
+    original = "def f():\n    return 1\n"
+    mutated = "def f():\n    return 1\n    yield 2\n"
+
+    assert rejected_as(original, mutated) == {}
+
+    namespace: dict = {}
+    exec(mutated, namespace)
+    assert namespace["f"]() != 1  # a generator object, not 1
+
+
+def test_an_annotation_change_is_kept_because_annotations_can_be_read():
+    original = "def f(b):\n    return b\n"
+    mutated = "def f(b: bool):\n    return b\n"
+    assert rejected_as(original, mutated) == {}
