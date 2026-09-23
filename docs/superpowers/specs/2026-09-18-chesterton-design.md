@@ -385,8 +385,20 @@ never change. Decisions the section above left open:
   class's own `self._x` / `cls._x` exempt) is rejected before verification,
   at no sandbox cost, and the repair prompt names the attributes. On the 10
   study tests it flags 4 of the 5 that failed on gold and none of the 5 that
-  passed; the fake-`zaxis` case is invisible to a static rule. Its effect on
-  a fresh run is not yet measured.
+  passed; the fake-`zaxis` case is invisible to a static rule.
+- **Second live result, with the rule — 2026-09-24, exploratory (same 13
+  patches, one run each; `review-study-2/`).** 12 of 13 got a headline
+  finding and 9 a verified test; 8 of the 9 pass on the gold fix, against 5
+  of 10 before. The 3 unverified tests failed on the PR's own code on both
+  attempts and were refused. The one left, `92beef201cfd`, uses only public
+  API: an image comparison asserting that an axes hidden and shown again
+  still renders as hidden, which is the agent's real bug (its
+  `_axis3don = b and self._axis3don` never restores the axes). The model
+  wrote the bug down as the expected behaviour; no static rule can see
+  that, only an oracle such as the gold fix. Model output varies between
+  runs (`9b606524fdb2` had a headline in the first run and none in the
+  second), so 5 → 1 is a strong signal from the rule's mechanism, not a
+  controlled measurement.
 
 ## 10. Model routing
 
