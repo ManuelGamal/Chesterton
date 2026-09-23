@@ -1045,6 +1045,49 @@ cannot place its changed lines in post-patch coordinates with certainty,
 and mutating the wrong lines would fail silently. Each exclusion drops its
 whole pair, so the paired tests stay balanced: 151 of 154 pairs remain.
 
+### Study v2 result, as registered (run 2026-09-22 to 23)
+
+151 analysed pairs, from 16 tasks; 3 pairs excluded (above). Flagged: wrong
+80%, control 77%. **H1: 26 wrong-only against 21 control-only discordant
+pairs, exact McNemar p = 0.28. H2: 65 wins, 68 losses, 18 ties, exact sign
+test p = 0.64. Neither hypothesis is supported.** Outputs: `benchmark-v2/`;
+the result reproduces exactly from the run files. Run health: 5 of 302 runs
+executed no mutant, 12 mutant verdicts were errors, 5 model proposals
+failed, and 55 runs left out scratch files under fix 1.
+
+| task | pairs | wrong flagged | control flagged | wrong-only | control-only |
+|---|---|---|---|---|---|
+| matplotlib-14623 | 16 | 15 | 16 | 0 | 1 |
+| matplotlib-23314 | 13 | 13 | 8 | 5 | 0 |
+| seaborn-3010 | 4 | 2 | 3 | 0 | 1 |
+| requests-863 | 2 | 2 | 1 | 1 | 0 |
+| xarray-3305 | 3 | 3 | 3 | 0 | 0 |
+| xarray-4687 | 12 | 12 | 12 | 0 | 0 |
+| pylint-5859 | 4 | 4 | 4 | 0 | 0 |
+| pylint-7080 | 1 | 1 | 1 | 0 | 0 |
+| scikit-learn-14087 | 5 | 5 | 5 | 0 | 0 |
+| scikit-learn-14894 | 1 | 1 | 1 | 0 | 0 |
+| sympy-16450 | 6 | 3 | 1 | 3 | 1 |
+| sympy-17655 | 32 | 21 | 31 | 1 | 11 |
+| sympy-18621 | 3 | 3 | 3 | 0 | 0 |
+| sympy-20154 | 1 | 0 | 1 | 0 | 1 |
+| sympy-21847 | 16 | 16 | 13 | 3 | 0 |
+| sympy-22714 | 32 | 20 | 13 | 13 | 6 |
+
+sympy-23117's screen marked all 38 of its patches wrong and none correct,
+so UTBoost's augmented test there most likely fails on any fix. With no
+control it formed no pair and does not enter the result.
+
+**Exploratory, not confirmatory.** No patch in either arm was flagged by
+tier 0 alone, so every flag came from a surviving mutant, and the flag is
+in effect "the suite leaves some mutant of the patch alive". That holds for
+about four in five agent patches whether UTBoost accepts them or not, which
+is the §2 critique measured on our own data: survival alone does not
+separate wrong patches from accepted ones. Effects vary by task, from
+matplotlib-23314 (13 of 13 rate wins) to sympy-17655 (28 of 32 losses).
+Any claim built on a per-task pattern would need its own pre-registration
+and fresh data.
+
 **Unchanged from v1:** the question, the population (the 22 non-Django
 UTBoost instances), the wrong and control definitions, the pairing rule,
 the Chesterton configuration, the FLAGGED and RATE outcomes, H1 and H2,
