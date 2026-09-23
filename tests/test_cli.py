@@ -262,3 +262,65 @@ def test_a_failed_seed_build_exits_1_with_the_reason(tmp_path, demo_seed, capsys
 def test_a_missing_subcommand_is_a_usage_error():
     with pytest.raises(SystemExit):
         main([])
+
+
+from dataclasses import asdict  # noqa: E402
+
+from conftest import NO_GUARD, ScriptedClient, a_survivor, finding_reply  # noqa: E402
+
+GOOD_TEST = "```python\nimport pytest\nfrom pay import charge\n\n\ndef test_zero():\n    with pytest.raises(ValueError):\n        charge(0)\n```"
+
+
+def review_files(tmp_path, demo_seed):
+    seed = tmp_path / "seed.json"
+    seed.write_text(demo_seed.to_json(), encoding="utf-8")
+    run = tmp_path / "run.json"
+    run.write_text(json.dumps({"results": [asdict(a_survivor(NO_GUARD))]}), encoding="utf-8")
+    return seed, run
+
+
+def a_reviewing_runner():
+    def handler(checkpoint, shell, files):
+        return RunResult("", "", 1 if "/testbed/pay.py" in files else 0, None)
+    return FakeSandboxRunner(handler=handler, artifacts={"/testbed/tests/test_pay.py": "def test_charge():\n    pass\n"})
+
+
+def test_review_writes_a_report_and_shows_the_verified_test(tmp_path, demo_seed, capsys):
+    seed, run = review_files(tmp_path, demo_seed)
+    out = tmp_path / "review.json"
+    client = ScriptedClient(by_marker={"Classify the mutant": [finding_reply()] * 3,
+                                       "Write one pytest regression test": [GOOD_TEST]})
+
+    code = main(["review", str(seed), str(run), "--out", str(out)],
+                runner_factory=a_reviewing_runner, client_factory=lambda: client)
+
+    assert code == 0
+    assert json.loads(out.read_text(encoding="utf-8"))["regression"]["verified"] is True
+    printed = capsys.readouterr().out
+    assert "1 headline" in printed and "pay.py:2-3" in printed
+    assert "verified" in printed and "def test_zero" in printed
+
+
+def test_review_never_prints_an_unverified_test(tmp_path, demo_seed, capsys):
+    seed, run = review_files(tmp_path, demo_seed)
+    client = ScriptedClient(by_marker={"Classify the mutant": [finding_reply()] * 3,
+                                       "Write one pytest regression test": [GOOD_TEST, GOOD_TEST]})
+
+    def passes_everywhere():
+        return FakeSandboxRunner(handler=lambda c, s, f: RunResult("", "", 0, None),
+                                 artifacts={"/testbed/tests/test_pay.py": "def test_charge():\n    pass\n"})
+
+    code = main(["review", str(seed), str(run), "--out", str(tmp_path / "r.json")],
+                runner_factory=passes_everywhere, client_factory=lambda: client)
+
+    assert code == 0
+    printed = capsys.readouterr().out
+    assert "def test_zero" not in printed and "no verified regression test" in printed
+
+
+def test_review_without_its_inputs_says_so(tmp_path, capsys):
+    code = main(["review", str(tmp_path / "no-seed.json"), str(tmp_path / "no-run.json"),
+                 "--out", str(tmp_path / "r.json")])
+
+    assert code == 1
+    assert "no seed" in capsys.readouterr().err
