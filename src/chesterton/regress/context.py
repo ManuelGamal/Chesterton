@@ -37,13 +37,23 @@ def covering_test_source(module_src: str, test_id: str) -> str:
         if isinstance(node, (ast.Import, ast.ImportFrom))
     ]
     scope = tree.body
+    class_node = None
     if owner is not None:
         classes = [n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == owner]
-        scope = classes[0].body if classes else []
+        class_node = classes[0] if classes else None
+        scope = class_node.body if class_node else []
     found = [
         _segment(lines, node) for node in scope
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name
     ]
     if not found:
         return "\n".join(lines[:FALLBACK_LINES])
+
+    # For class-based tests, include the class header
+    if class_node is not None:
+        class_header_first = min([class_node.lineno] + [d.lineno for d in class_node.decorator_list])
+        class_header_last = class_node.body[0].lineno - 1
+        class_header = "\n".join(lines[class_header_first - 1 : class_header_last])
+        return "\n".join(imports) + "\n\n\n" + class_header + "\n" + found[0]
+
     return "\n".join(imports) + "\n\n\n" + found[0]

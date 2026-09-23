@@ -1,5 +1,7 @@
 """One regression test, written for the top finding (spec §9)."""
 
+import ast
+
 from chesterton.llm.client import SYNTHESIS_MODEL, TruncatedResponse
 from chesterton.regress.context import covering_test_source
 from chesterton.regress.generate import (
@@ -56,6 +58,8 @@ def test_a_method_is_found_inside_its_class():
     context = covering_test_source(TEST_MODULE, "tests/test_pay.py::TestCharge::test_positive")
 
     assert "def test_positive(self):" in context and "test_rendered" not in context
+    assert "class TestCharge:" in context
+    assert ast.parse(context) is not None
 
 
 def test_an_unparseable_module_falls_back_to_its_head():
