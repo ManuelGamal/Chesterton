@@ -97,3 +97,65 @@ def test_non_logging_method_on_log_object_is_kept():
     mutated = audit_log.replace("log.append(item)", "log.append(None)")
 
     assert prefilter(ev(a_survivor(mutated, start=2, end=2, original=audit_log))) is None
+
+
+# F1: the pre-filter must decide from the whole-module diff, never the
+# display window, or an operator that edits past its recorded hunk (like
+# `remove_cleanup` emptying a whole `finally` body) hides real behaviour.
+CLEANUP_BEFORE = (
+    "def process():\n"
+    "    try:\n"
+    "        do_work()\n"
+    "    finally:\n"
+    '        log.info("step 1")\n'
+    '        log.info("step 2")\n'
+    '        log.info("step 3")\n'
+    '        log.info("step 4")\n'
+    '        log.info("step 5")\n'
+    '        log.info("step 6")\n'
+    "        conn.close()\n"
+)
+CLEANUP_AFTER = (
+    "def process():\n"
+    "    try:\n"
+    "        do_work()\n"
+    "    finally:\n"
+    "        pass\n"
+)
+
+
+def test_a_removed_conn_close_past_the_hunk_is_never_dismissed_as_logging_only():
+    # Hunk metadata records lines 5-10 (the six log calls); the mutation
+    # actually removes lines 5-11, reaching one line past the recorded hunk
+    # to take conn.close() with it. A window built from start..end with no
+    # context is exactly the recorded hunk, so it never shows conn.close();
+    # the pre-filter must see the whole module regardless.
+    result = a_survivor(CLEANUP_AFTER, start=5, end=10, original=CLEANUP_BEFORE)
+
+    assert prefilter(evidence_for(result, "t", context=0)) is None
+
+
+# F2: `print` qualifies only with no `file=` keyword, since data written to a
+# file is observable behaviour, not just output.
+def test_print_with_a_file_keyword_is_kept():
+    printed = (
+        "def report(row, out):\n"
+        "    print(row, file=out)\n"
+    )
+    mutated = printed.replace("print(row, file=out)", "print(row)")
+
+    assert prefilter(ev(a_survivor(mutated, start=2, end=2, original=printed))) is None
+
+
+# F2: `warnings.warn` is dropped from the rule entirely: a warning's category
+# is observable (pytest.warns, -W error, matplotlib's filterwarnings=error).
+def test_warnings_warn_is_no_longer_dismissed():
+    warned = (
+        "import warnings\n"
+        "def charge(amount):\n"
+        '    warnings.warn("deprecated", DeprecationWarning)\n'
+        "    return amount\n"
+    )
+    mutated = warned.replace(', DeprecationWarning)', ')')
+
+    assert prefilter(ev(a_survivor(mutated, start=3, end=3, original=warned))) is None
