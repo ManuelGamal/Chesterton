@@ -2,6 +2,8 @@
 
 import ast
 
+import openai
+
 from chesterton.llm.client import SYNTHESIS_MODEL, TruncatedResponse
 from chesterton.regress.context import covering_test_source
 from chesterton.regress.generate import (
@@ -95,17 +97,45 @@ def test_a_reply_without_a_test_or_that_does_not_parse_is_refused():
     assert parse_test_module("```python\ndef test_x(:\n```") is None
 
 
+# M3: some replies fence with ```py instead of ```python.
+def test_a_py_fence_is_accepted_too():
+    py_fenced = GOOD.replace("```python", "```py")
+
+    assert parse_test_module(py_fenced).startswith("import pytest")
+
+
 async def test_generation_uses_the_synthesis_tier():
     client = ScriptedClient(GOOD)
 
-    source = await generate_regression_test(client, EV, "e", "CTX", "p.py")
+    generation = await generate_regression_test(client, EV, "e", "CTX", "p.py")
 
-    assert "def test_zero_is_refused" in source
+    assert "def test_zero_is_refused" in generation.source
+    assert generation.failure is None
     [call] = client.calls
     assert call["model"] == SYNTHESIS_MODEL and call["thinking"] is True
 
 
-async def test_a_truncated_generation_yields_nothing():
+# F3: the caller needs the real reason generation produced nothing, so a
+# truncated reply is never described as "no parseable test module".
+async def test_a_truncated_generation_carries_its_failure():
     client = ScriptedClient(raises=TruncatedResponse("x"))
 
-    assert await generate_regression_test(client, EV, "e", "CTX", "p.py") is None
+    generation = await generate_regression_test(client, EV, "e", "CTX", "p.py")
+
+    assert generation.source is None and generation.failure == "truncated"
+
+
+async def test_an_unavailable_model_carries_its_failure():
+    client = ScriptedClient(raises=openai.OpenAIError("down"))
+
+    generation = await generate_regression_test(client, EV, "e", "CTX", "p.py")
+
+    assert generation.source is None and generation.failure == "unavailable"
+
+
+async def test_an_unparseable_reply_carries_its_failure():
+    client = ScriptedClient("not a test module at all")
+
+    generation = await generate_regression_test(client, EV, "e", "CTX", "p.py")
+
+    assert generation.source is None and generation.failure == "unparseable"

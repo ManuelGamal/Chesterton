@@ -1,5 +1,9 @@
 """Three confident findings beat eleven noisy ones (spec §9)."""
 
+import openai
+import pytest
+
+from chesterton.triage.classify import ModelUnavailable
 from chesterton.triage.select import triage
 
 from conftest import HEAD_PAY, NO_GUARD, ScriptedClient, a_survivor, finding_reply
@@ -78,6 +82,41 @@ async def test_killed_results_are_ignored_and_logging_is_dismissed_for_free():
     [dropped] = report.dismissed
     assert dropped.prefiltered == "logging_only"
     assert report.headline == [] and report.worth_a_look == []
+
+
+# F3: a total model outage (bad key, denied model) must not read as a clean
+# review with "0 headline findings". Live 2026-09-23: every classification
+# silently abstained and the CLI exited 0.
+async def test_every_survivor_unavailable_raises_instead_of_a_silent_clean_review():
+    client = ScriptedClient(raises=openai.OpenAIError("down"))
+
+    with pytest.raises(ModelUnavailable, match="2"):
+        await triage(client, [GUARD, RETURN], "t")
+
+
+async def test_a_mix_of_unavailable_and_a_real_answer_does_not_raise():
+    class MixedClient:
+        async def complete(self, prompt, *, model, max_tokens=2048, thinking=False):
+            if "M-GUARD" in prompt:
+                raise openai.OpenAIError("down")
+            return FINDING
+
+    report = await triage(MixedClient(), [GUARD, RETURN], "t")
+
+    # GUARD abstained (unavailable) every time, so it never becomes a
+    # headline, but the run as a whole did not raise.
+    assert [h.evidence.rationale for h in report.headline] == ["M-RETURN"]
+
+
+async def test_no_survivors_sent_to_the_model_never_raises():
+    client = ScriptedClient(raises=openai.OpenAIError("down"))
+    logged = "import logging\nlog = logging.getLogger(__name__)\nlog.info('a')\n"
+    quiet = a_survivor(logged.replace("'a'", "'b'"), start=3, end=3, original=logged)
+
+    report = await triage(client, [quiet], "t")
+
+    assert client.calls == []
+    assert report.dismissed and report.dismissed[0].prefiltered == "logging_only"
 
 
 async def test_identical_survivors_are_each_accounted_for():

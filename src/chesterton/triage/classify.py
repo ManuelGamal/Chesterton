@@ -32,16 +32,33 @@ MAX_TOKENS = 8192
 MAX_TESTS_SHOWN = 20
 
 
+#: Set only when the model was not really consulted, so a total outage never
+#: looks like a clean review (spec §9, F3): "unavailable" for an OpenAIError,
+#: "truncated" for TruncatedResponse, "malformed" for a reply that was not
+#: the JSON asked for. None for a real answer, including one that is unsure.
+Failure = Literal["unavailable", "truncated", "malformed"]
+
+
 @dataclass(frozen=True)
 class Classification:
     label: Label
     category: Category | None
     confident: bool
     explanation: str
+    failure: Failure | None = None
 
 
-def _abstain(why: str) -> Classification:
-    return Classification("unclassified", None, False, why)
+class ModelUnavailable(RuntimeError):
+    """Every survivor sent to the model came back "unavailable" this round.
+
+    Live 2026-09-23: with a bad key or a denied model, every classification
+    abstained silently and the CLI printed "0 headline ... no verified
+    regression test" and exited 0 - a total outage read as a clean review.
+    """
+
+
+def _abstain(why: str, failure: Failure | None = None) -> Classification:
+    return Classification("unclassified", None, False, why, failure)
 
 
 _PROMPT = """\
@@ -107,20 +124,22 @@ def build_triage_prompt(ev: Evidence) -> str:
 def parse_classification(reply: str) -> Classification:
     parsed = extract_json(reply)
     if parsed is None:
-        return _abstain("the model's reply was not the JSON asked for")
+        return _abstain("the model's reply was not the JSON asked for", "malformed")
     label = parsed.get("label")
     if label not in _LABELS:
         return _abstain(f"the model gave no known label ({label!r})")
     category = parsed.get("category") if label == "untested_invariant" else None
     if label == "untested_invariant" and category not in _CATEGORIES:
         return _abstain("the model called it a finding without a valid category")
+    confident = parsed.get("confident") is True
     explanation = parsed.get("explanation")
-    return Classification(
-        label=label,
-        category=category,
-        confident=parsed.get("confident") is True,
-        explanation=explanation if isinstance(explanation, str) else "",
-    )
+    explanation = explanation if isinstance(explanation, str) else ""
+    if label == "untested_invariant" and confident and not explanation.strip():
+        # A confident finding with nothing a reviewer can check is not
+        # trustworthy enough to show; this is a real (if useless) answer,
+        # never a failure (M2).
+        return _abstain("a confident untested_invariant with no explanation a reviewer can check")
+    return Classification(label=label, category=category, confident=confident, explanation=explanation)
 
 
 async def classify_survivor(client, ev: Evidence) -> Classification:
@@ -132,7 +151,7 @@ async def classify_survivor(client, ev: Evidence) -> Classification:
             max_tokens=MAX_TOKENS, thinking=True,
         )
     except TruncatedResponse:
-        return _abstain("the model ran out of tokens before answering")
+        return _abstain("the model ran out of tokens before answering", "truncated")
     except openai.OpenAIError as exc:
-        return _abstain(f"the model was unavailable ({type(exc).__name__})")
+        return _abstain(f"the model was unavailable ({type(exc).__name__})", "unavailable")
     return parse_classification(reply)

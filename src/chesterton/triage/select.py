@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
 from chesterton.execute.mutants import MutantResult
-from chesterton.triage.classify import Classification, classify_survivor
+from chesterton.triage.classify import Classification, ModelUnavailable, classify_survivor
 from chesterton.triage.evidence import Evidence, evidence_for
 from chesterton.triage.prefilter import prefilter
 
@@ -88,6 +88,12 @@ async def triage(
             ))
 
     first = await asyncio.gather(*(classify(ev) for ev in pending))
+    if pending and all(c.failure == "unavailable" for c in first):
+        # A total model outage (bad key, denied model) must not read as a
+        # clean review with "0 headline findings" (spec §9, F3).
+        raise ModelUnavailable(
+            f"the model was unavailable for all {len(pending)} survivors sent to it"
+        )
     triaged = [TriagedSurvivor(ev, c) for ev, c in zip(pending, first)]
 
     chosen: list[TriagedSurvivor] = []

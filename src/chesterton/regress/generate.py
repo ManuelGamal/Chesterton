@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import re
+from dataclasses import dataclass
 
 from chesterton.llm.client import SYNTHESIS_MODEL, TruncatedResponse
 from chesterton.triage.evidence import Evidence
@@ -18,7 +19,20 @@ REGRESSION_FILE = "test_chesterton_regression.py"
 #: Thinking plus a whole test module.
 MAX_TOKENS = 16384
 
-_FENCE = re.compile(r"```(?:python)?\s*\n(.*?)```", re.DOTALL)
+_FENCE = re.compile(r"```(?:python|py)?\s*\n(.*?)```", re.DOTALL)
+
+
+@dataclass(frozen=True)
+class Generation:
+    """One attempt at writing the regression test.
+
+    `failure` names the real reason `source` is None ("truncated",
+    "unavailable" or "unparseable"), so a repair prompt or a report note
+    never calls a truncated reply "no parseable test module" (spec §9, F3).
+    """
+
+    source: str | None
+    failure: str | None = None
 
 
 def regression_test_path(test_id: str) -> str:
@@ -104,7 +118,7 @@ def parse_test_module(reply: str) -> str | None:
 async def generate_regression_test(
     client, ev: Evidence, explanation: str, test_context: str, path: str,
     feedback: str | None = None,
-) -> str | None:
+) -> Generation:
     import openai
 
     prompt = build_regression_prompt(ev, explanation, test_context, path, feedback)
@@ -112,6 +126,9 @@ async def generate_regression_test(
         reply = await client.complete(
             prompt, model=SYNTHESIS_MODEL, max_tokens=MAX_TOKENS, thinking=True
         )
-    except (TruncatedResponse, openai.OpenAIError):
-        return None
-    return parse_test_module(reply)
+    except TruncatedResponse:
+        return Generation(None, "truncated")
+    except openai.OpenAIError:
+        return Generation(None, "unavailable")
+    source = parse_test_module(reply)
+    return Generation(source, None if source is not None else "unparseable")
