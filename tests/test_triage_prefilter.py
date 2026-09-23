@@ -43,3 +43,57 @@ def test_a_change_that_also_touches_real_code_is_kept():
     )
 
     assert prefilter(ev(a_survivor(mutated, start=5, end=6, original=LOGGED))) is None
+
+
+def test_logging_call_with_real_logic_on_same_line_is_kept():
+    """log.debug(...) if verbose else validate(...) has real behavior."""
+    guarded = (
+        "import logging\n"
+        "log = logging.getLogger(__name__)\n"
+        "\n"
+        "def charge(amount):\n"
+        '    log.debug("checking") if verbose else validate(amount)\n'
+        "    return amount\n"
+    )
+    mutated = guarded.replace("verbose", "not verbose")
+
+    assert prefilter(ev(a_survivor(mutated, start=5, end=5, original=guarded))) is None
+
+
+def test_print_with_side_effect_is_kept():
+    """print(x) or side_effect(y) has real behavior."""
+    with_side_effect = (
+        "def charge(amount):\n"
+        '    print(x) or dangerous_side_effect(y)\n'
+        "    return amount\n"
+    )
+    mutated = with_side_effect.replace("dangerous_side_effect", "other_side_effect")
+
+    assert prefilter(ev(a_survivor(mutated, start=2, end=2, original=with_side_effect))) is None
+
+
+def test_logging_with_call_in_arguments_is_kept():
+    """log.debug with queue.pop() argument has real behavior."""
+    with_call_arg = (
+        "import logging\n"
+        "log = logging.getLogger(__name__)\n"
+        "\n"
+        "def charge(amount):\n"
+        '    log.debug("%s", queue.pop())\n'
+        "    return amount\n"
+    )
+    mutated = with_call_arg.replace('log.debug("%s", queue.pop())', 'log.debug("%s")')
+
+    assert prefilter(ev(a_survivor(mutated, start=5, end=5, original=with_call_arg))) is None
+
+
+def test_non_logging_method_on_log_object_is_kept():
+    """log.append(item) is not a logging method."""
+    audit_log = (
+        "def charge(amount):\n"
+        "    log.append(item)\n"
+        "    return amount\n"
+    )
+    mutated = audit_log.replace("log.append(item)", "log.append(None)")
+
+    assert prefilter(ev(a_survivor(mutated, start=2, end=2, original=audit_log))) is None
