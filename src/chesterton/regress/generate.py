@@ -33,6 +33,35 @@ class Generation:
 
     source: str | None
     failure: str | None = None
+    #: For failure "private_api": the private names the test used.
+    private: tuple[str, ...] = ()
+
+
+def _dunder(name: str) -> bool:
+    return name.startswith("__") and name.endswith("__")
+
+
+def private_names(source: str) -> list[str]:
+    """The private attributes and imports a test module uses, sorted.
+
+    A test that asserts on internals pins the patch's IMPLEMENTATION, not
+    its behaviour. Live 2026-09-23 (review study, matplotlib-23314): every
+    verified test that failed on the gold fix read an attribute the agent
+    had invented (`ax._axis3don`, `ax._axis_map`); every one that passed
+    asserted only `ax.get_visible()`. Dunders are public protocol, and a
+    test class's own state (`self._fig`, `cls._x`) is the test's business.
+    """
+    names: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Attribute) and node.attr.startswith("_") and not _dunder(node.attr):
+            owner = node.value
+            if not (isinstance(owner, ast.Name) and owner.id in ("self", "cls")):
+                names.add(node.attr)
+        elif isinstance(node, ast.ImportFrom):
+            names.update(
+                a.name for a in node.names if a.name.startswith("_") and not _dunder(a.name)
+            )
+    return sorted(names)
 
 
 def regression_test_path(test_id: str) -> str:
@@ -53,6 +82,9 @@ behaviour the mutant breaks.
 use the same imports and fixtures.
 - Test observable behaviour through the code's public API. Do not read \
 source text, compare code, or look for the mutant.
+- Never read or write private attributes or import private names (anything \
+starting with an underscore): they belong to this patch's implementation, \
+and a correct fix written differently would fail such a test.
 - Deterministic: no network, no sleeping, no unseeded randomness.
 - Only syntax that Python 3.7 accepts.
 Reply with the complete module in one ```python block and nothing else.
@@ -131,4 +163,11 @@ async def generate_regression_test(
     except openai.OpenAIError:
         return Generation(None, "unavailable")
     source = parse_test_module(reply)
-    return Generation(source, None if source is not None else "unparseable")
+    if source is None:
+        return Generation(None, "unparseable")
+    private = private_names(source)
+    if private:
+        # Rejected before verification: it would cost two sandbox ops to
+        # confirm a test that pins internals (spec §9 as built).
+        return Generation(None, "private_api", tuple(private))
+    return Generation(source)

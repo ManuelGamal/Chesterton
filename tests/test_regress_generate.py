@@ -10,6 +10,7 @@ from chesterton.regress.generate import (
     build_regression_prompt,
     generate_regression_test,
     parse_test_module,
+    private_names,
     regression_test_path,
 )
 from chesterton.triage.evidence import evidence_for
@@ -139,3 +140,53 @@ async def test_an_unparseable_reply_carries_its_failure():
     generation = await generate_regression_test(client, EV, "e", "CTX", "p.py")
 
     assert generation.source is None and generation.failure == "unparseable"
+
+
+# --- a test pinned to internals encodes the patch, not its behaviour --------
+# Live 2026-09-23 (review study, matplotlib-23314): of 10 verified tests, the
+# 5 that FAILED on the gold fix all read private attributes the agent had
+# invented (ax._axis3don, ax._axis_map, a fake zaxis); the 5 that passed on
+# gold asserted only ax.get_visible(). The prompt already said "public API".
+
+
+PRIVATE = '''
+from mpl_toolkits.mplot3d import axes3d, _helper
+
+
+class TestState:
+    def setup_method(self):
+        self._fig = None
+
+    def test_x(self):
+        ax = make()
+        ax.set_visible(False)
+        assert ax._axis3don is False
+        for axis in ax._axis_map.values():
+            assert axis.__class__ is not None
+'''
+
+
+def test_private_attributes_and_imports_are_named():
+    assert private_names(PRIVATE) == ["_axis3don", "_axis_map", "_helper"]
+
+
+def test_public_api_self_state_and_dunders_are_allowed():
+    public = "def test_x():\n    ax = make()\n    assert ax.get_visible() is False\n    assert ax.__class__\n"
+
+    assert private_names(public) == []
+
+
+def test_the_prompt_forbids_private_attributes():
+    prompt = build_regression_prompt(EV, "e", "CTX", "p.py")
+
+    assert "private" in prompt and "underscore" in prompt
+
+
+async def test_a_test_reading_private_attributes_is_rejected_before_any_sandbox_op():
+    reply = "```python\ndef test_x():\n    ax = make()\n    assert ax._axis3don is False\n```"
+
+    generation = await generate_regression_test(ScriptedClient(reply), EV, "e", "CTX", "p.py")
+
+    assert generation.source is None
+    assert generation.failure == "private_api"
+    assert generation.private == ("_axis3don",)

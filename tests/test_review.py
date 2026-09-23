@@ -224,3 +224,30 @@ async def test_the_no_covering_test_note_is_kept_when_no_headline_has_tests(demo
     review = await review_run(demo_seed, report, sandbox(), client)
 
     assert review.regression.note == "no covering test to place a new test beside"
+
+
+# --- a test pinned to internals is repaired, not verified ------------------
+# Live 2026-09-23 (review study): the verified tests that failed on the gold
+# fix all read private attributes. Rejected statically, they cost no op.
+
+PRIVATE_TEST = "```python\nfrom pay import charge\n\n\ndef test_zero():\n    assert charge._validated is True\n```"
+
+
+async def test_a_private_api_test_is_repaired_without_spending_sandbox_ops(demo_seed):
+    client = ScriptedClient(by_marker={TRIAGE: [finding_reply()] * 3, WRITE: [PRIVATE_TEST, GOOD]})
+
+    review = await review_run(demo_seed, REPORT, sandbox(), client)
+
+    assert review.regression.verified and review.regression.attempts == 2
+    assert review.ops_used == 2  # only the second attempt was run
+    second = [c for c in client.calls if WRITE in c["prompt"]][1]
+    assert "_validated" in second["prompt"] and "public API" in second["prompt"]
+
+
+async def test_two_private_api_tests_leave_a_note_naming_the_attributes(demo_seed):
+    client = ScriptedClient(by_marker={TRIAGE: [finding_reply()] * 3, WRITE: [PRIVATE_TEST, PRIVATE_TEST]})
+
+    review = await review_run(demo_seed, REPORT, sandbox(), client)
+
+    assert review.regression.verified is False and review.ops_used == 0
+    assert "private_api" in review.regression.note and "_validated" in review.regression.note

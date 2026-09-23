@@ -43,6 +43,21 @@ _GENERATION_FEEDBACK = {
 }
 
 
+def _feedback(generation) -> str:
+    if generation.failure == "private_api":
+        return (
+            f"the test used private names ({', '.join(generation.private)}); a test on "
+            "internals pins this patch's implementation. Assert only through the public API"
+        )
+    return _GENERATION_FEEDBACK.get(generation.failure, generation.failure or "no test source")
+
+
+def _failure_label(generation) -> str | None:
+    if generation.failure == "private_api":
+        return f"private_api ({', '.join(generation.private)})"
+    return generation.failure
+
+
 @dataclass(frozen=True)
 class RegressionTest:
     path: str
@@ -100,9 +115,9 @@ async def _regression_for(
         generation = await generate_regression_test(
             client, ev, finding.classification.explanation, context, path, feedback
         )
-        source, failure = generation.source, generation.failure
+        source, failure = generation.source, _failure_label(generation)
         if source is None:
-            feedback = _GENERATION_FEEDBACK.get(failure, failure or "no test source")
+            feedback = _feedback(generation)
             continue
         verification = await verify_regression_test(pool, seed, ev.mutant, path, source)
         if verification.status in ("verified", "error"):
