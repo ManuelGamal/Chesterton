@@ -337,6 +337,25 @@ writing a test from a surviving mutant may encode a bug as correct behaviour —
 with execution rather than a disclaimer. Costs two extra sandbox ops. This
 artifact is the JiTTest of §2.
 
+### As built — 2026-09-23
+
+`chesterton review SEED RUN` reads an existing run, so runs and the benchmark
+never change. Decisions the section above left open:
+
+- **Pre-filter:** one rule, right by construction: every changed line is a
+  one-line logging, print or warnings call. Anything uncertain goes to the model.
+- **Headline:** confident `untested_invariant`, ranked safety first, then by
+  how many tests ran it and still passed; at most one per hunk and three per
+  run; each confirmed 3 of 3 times, or it is only "worth a look".
+- **Regression test:** for the first headline only, written by Ultra beside
+  the covering test (`test_chesterton_regression.py`), verified in two forks
+  (exit 0 on the PR, exit 1 on the mutant; any other code proves nothing),
+  repaired once with the failing output. At most 4 sandbox ops per review.
+- **Measured before it is pitched:** `scripts/review_study.py` runs it on
+  matplotlib-23314's 13 wrong agent patches and checks each verified test
+  against the gold fix. A test that fails on gold encoded the agent's bug and
+  is reported as such. Exploratory, not a benchmark.
+
 ## 10. Model routing
 
 **Model IDs confirmed live on Token Factory (2026-09-18, via
