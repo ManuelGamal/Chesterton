@@ -67,3 +67,29 @@ def demo_seed() -> SeedRecord:
         sources={"pay.py": HEAD_PAY},
         built_at="2026-09-19T00:00:00+00:00",
     )
+
+
+from chesterton.execute.mutants import MutantResult  # noqa: E402
+from chesterton.mutation.model import Mutant  # noqa: E402
+
+#: The demo module with its guard deleted: lines 2-3 are gone.
+NO_GUARD = "def charge(amount):\n    return amount\n"
+
+
+def a_survivor(
+    mutated_src: str,
+    *,
+    start: int = 2,
+    end: int = 3,
+    rationale: str = "",
+    tests: tuple[str, ...] = (T_CHARGE,),
+    original: str = HEAD_PAY,
+    file: str = "pay.py",
+    verdict: str = "survived",
+) -> MutantResult:
+    mutant = Mutant(
+        file=file, start_line=start, end_line=end, operator="semantic",
+        original_src=original, mutated_src=mutated_src, rationale=rationale,
+        source="llm",
+    )
+    return MutantResult(mutant, verdict, tests)
