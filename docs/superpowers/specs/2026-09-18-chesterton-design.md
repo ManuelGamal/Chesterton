@@ -371,6 +371,22 @@ never change. Decisions the section above left open:
   matplotlib-23314's 13 wrong agent patches and checks each verified test
   against the gold fix. A test that fails on gold encoded the agent's bug and
   is reported as such. Exploratory, not a benchmark.
+- **First live result — 2026-09-23, exploratory (13 patches, one task).**
+  12 of 13 wrong patches got a headline finding and 10 a verified test. 5
+  of those passed on the gold fix and asserted only public behaviour
+  (`ax.get_visible()`); 5 failed on gold, and every one of them pinned the
+  agent's implementation: `ax._axis3don`, `ax._axis_map`, or a fake `zaxis`
+  swapped in. They are hardening tests for the agent's design, not for the
+  intended behaviour. A verified test passes on the patch by construction,
+  so it can never catch that patch's own bug: the catch is the finding, and
+  the test is the regression guard.
+- **Response:** a generated test that reads or writes a private attribute
+  or imports a private name (a leading underscore; dunders and a test
+  class's own `self._x` / `cls._x` exempt) is rejected before verification,
+  at no sandbox cost, and the repair prompt names the attributes. On the 10
+  study tests it flags 4 of the 5 that failed on gold and none of the 5 that
+  passed; the fake-`zaxis` case is invisible to a static rule. Its effect on
+  a fresh run is not yet measured.
 
 ## 10. Model routing
 
