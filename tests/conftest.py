@@ -93,3 +93,36 @@ def a_survivor(
         source="llm",
     )
     return MutantResult(mutant, verdict, tests)
+
+
+import json as _json  # noqa: E402
+
+
+class ScriptedClient:
+    """A NemotronClient stand-in: answers by prompt content, records every call."""
+
+    def __init__(self, reply=None, *, raises=None, by_marker=None):
+        self.reply, self.raises = reply, raises
+        self.by_marker = dict(by_marker or {})
+        self.calls: list[dict] = []
+
+    async def complete(self, prompt, *, model, max_tokens=2048, thinking=False):
+        self.calls.append(
+            {"prompt": prompt, "model": model, "max_tokens": max_tokens, "thinking": thinking}
+        )
+        if self.raises is not None:
+            raise self.raises
+        for marker, replies in self.by_marker.items():
+            if marker in prompt:
+                return replies.pop(0) if isinstance(replies, list) else replies
+        return self.reply
+
+
+def finding_reply(
+    label="untested_invariant", category="safety", confident=True,
+    explanation="the guard is never exercised",
+) -> str:
+    return _json.dumps(
+        {"label": label, "category": category, "confident": confident,
+         "explanation": explanation}
+    )
