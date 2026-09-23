@@ -78,3 +78,15 @@ async def test_killed_results_are_ignored_and_logging_is_dismissed_for_free():
     [dropped] = report.dismissed
     assert dropped.prefiltered == "logging_only"
     assert report.headline == [] and report.worth_a_look == []
+
+
+async def test_identical_survivors_are_each_accounted_for():
+    twin_a = a_survivor(NO_GUARD, rationale="M-GUARD")
+    twin_b = a_survivor(NO_GUARD, rationale="M-GUARD")
+    client = ScriptedClient(by_marker={"M-GUARD": [FINDING] * 4})
+
+    report = await triage(client, [twin_a, twin_b], "t")
+
+    assert len(report.headline) + len(report.worth_a_look) + len(report.dismissed) == 2
+    assert len(report.headline) == 1
+    assert len(report.worth_a_look) == 1

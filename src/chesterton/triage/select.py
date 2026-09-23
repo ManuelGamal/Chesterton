@@ -95,6 +95,8 @@ async def triage(
         if len(chosen) < headline_limit and _hunk(t) not in {_hunk(c) for c in chosen}:
             chosen.append(t)
 
+    chosen_ids = {id(t) for t in chosen}
+
     async def confirm(t: TriagedSurvivor) -> TriagedSurvivor:
         more = await asyncio.gather(*(classify(t.evidence) for _ in range(samples - 1)))
         return replace(t, agreement=1 + sum(_candidate(c) for c in more))
@@ -103,7 +105,7 @@ async def triage(
     headline = [t for t in confirmed if t.agreement == samples]
     worth_a_look = [t for t in confirmed if t.agreement != samples]
     for t in triaged:
-        if t in chosen:
+        if id(t) in chosen_ids:
             continue
         if t.classification.label in ("untested_invariant", "unclassified"):
             worth_a_look.append(t)
