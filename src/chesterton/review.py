@@ -1,11 +1,18 @@
 """Review one finished run: triage its survivors, then write one test.
 
 Reads a seed and a run report that already exist, so runs, and the
-benchmark built on them, never change. The top headline finding gets a
-regression test from the synthesis tier. It is verified in two forks, and
-if it fails, it is repaired once with what went wrong. Four sandbox ops at
-most. A test that never verified is kept in the report for inspection and
-marked unverified; it is never rendered as a finding's answer (spec §9).
+benchmark built on them, never change. `review_run` first checks the two
+belong together: a run report carries its own `slug`, and a mismatch against
+the seed's is refused rather than reviewed (F5). The first headline finding
+that has a covering test gets a regression test from the synthesis tier
+(M1: a safety finding with no covering test must not block a functional one
+that has one). It is verified in two forks, and if it fails, it is repaired
+once with what went wrong. Four sandbox ops at most. A test that never
+verified is kept in the report for inspection and marked unverified; it is
+never rendered as a finding's answer (spec §9). If the regression stage
+itself cannot run (e.g. the sandbox runner cannot even be read from), the
+triage that already happened is still returned, with the failure named in
+the regression's note (F4).
 """
 
 from __future__ import annotations
@@ -25,6 +32,15 @@ from chesterton.triage.select import TriagedSurvivor, TriageReport, triage
 
 REVIEW_OP_BUDGET = 4
 MAX_ATTEMPTS = 2
+
+#: The real reason generation produced no source, for repair feedback and
+#: the final note (spec §9, F3): truncation is never described as "no
+#: parseable test module".
+_GENERATION_FEEDBACK = {
+    "truncated": "the model ran out of tokens before finishing the test module",
+    "unavailable": "the model was unavailable",
+    "unparseable": "the reply held no parseable test module with a test function",
+}
 
 
 @dataclass(frozen=True)
@@ -79,30 +95,50 @@ async def _regression_for(
     except SandboxReadError:
         context = "(the covering test could not be read)"
 
-    source, verification, feedback = None, None, None
+    source, verification, feedback, failure = None, None, None, None
     for attempt in range(1, MAX_ATTEMPTS + 1):
-        source = await generate_regression_test(
+        generation = await generate_regression_test(
             client, ev, finding.classification.explanation, context, path, feedback
         )
+        source, failure = generation.source, generation.failure
         if source is None:
-            feedback = "the reply held no parseable test module with a test function"
+            feedback = _GENERATION_FEEDBACK.get(failure, failure or "no test source")
             continue
         verification = await verify_regression_test(pool, seed, ev.mutant, path, source)
         if verification.status in ("verified", "error"):
             return RegressionTest(path, source, verification, attempt)
         feedback = verification.feedback()
-    return RegressionTest(path, source, verification, MAX_ATTEMPTS)
+    note = f"no regression test generated: {failure}" if source is None else None
+    return RegressionTest(path, source, verification, MAX_ATTEMPTS, note=note)
 
 
 async def review_run(
     seed: SeedRecord, report: dict, runner, client, *, op_budget: int = REVIEW_OP_BUDGET
 ) -> ReviewReport:
+    report_slug = report.get("slug")
+    if report_slug is not None and report_slug != seed.slug:
+        raise ValueError(
+            f"the run report is for slug {report_slug!r} but the seed is {seed.slug!r}: "
+            "they do not belong together"
+        )
     started = time.perf_counter()
     triaged = await triage(client, results_from_report(report), seed.pr.title)
     pool = SandboxPool(runner, op_budget=op_budget)
     regression = None
     if triaged.headline:
-        regression = await _regression_for(triaged.headline[0], seed, runner, pool, client)
+        # M1: a headline with no covering test cannot get a test placed
+        # beside it; try the next headline that has one before giving up.
+        finding = next((f for f in triaged.headline if f.evidence.tests), triaged.headline[0])
+        try:
+            regression = await _regression_for(finding, seed, runner, pool, client)
+        except Exception as exc:
+            # The triage already ran (spec §9); a sandbox that cannot even
+            # be read from (e.g. ConTreeSandboxRunner with no
+            # NEBIUS_PROJECT_ID) must not throw the whole review away (F4).
+            regression = RegressionTest(
+                "", None, None, 0,
+                note=f"regression stage failed: {type(exc).__name__}: {exc}",
+            )
     return ReviewReport(
         seed.slug, triaged, regression, pool.ops_used, round(time.perf_counter() - started, 3)
     )

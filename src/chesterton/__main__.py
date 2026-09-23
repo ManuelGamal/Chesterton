@@ -244,6 +244,7 @@ def _summarise_review(review) -> str:
 
 async def _review(args, runner_factory, client_factory) -> int:
     from chesterton.review import review_run
+    from chesterton.triage.classify import ModelUnavailable
 
     for path, what in ((args.seed, "seed"), (args.run, "run report")):
         if not path.is_file():
@@ -254,6 +255,15 @@ async def _review(args, runner_factory, client_factory) -> int:
     runner = runner_factory()
     try:
         review = await review_run(seed, report, runner, client_factory())
+    except ValueError as exc:
+        # The seed and the run report do not belong together (F5).
+        print(str(exc), file=sys.stderr)
+        return 1
+    except ModelUnavailable as exc:
+        # A total model outage must not look like a clean "0 findings"
+        # review (F3): nothing is written, and the exit code says so.
+        print(f"{exc} (check NEBIUS_API_KEY and model access)", file=sys.stderr)
+        return 2
     finally:
         await runner.aclose()
     _write(args.out, review.to_json())

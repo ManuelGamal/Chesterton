@@ -1,12 +1,16 @@
 """The exploratory study script is loaded by path, like the other scripts."""
 
 import importlib.util
+import json
+from dataclasses import asdict
 from pathlib import Path
+
+import openai
 
 from chesterton.execute.pool import SandboxPool
 from chesterton.sandbox.fake import FakeSandboxRunner
 from chesterton.sandbox.protocol import RunResult
-from conftest import ScriptedClient
+from conftest import NO_GUARD, ScriptedClient, a_survivor
 
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "review_study.py"
 _spec = importlib.util.spec_from_file_location("review_study", _SCRIPT)
@@ -90,3 +94,31 @@ async def test_one_broken_patch_does_not_end_the_study(tmp_path, demo_seed):
     assert rows[1]["patch"] == "bbb"
     assert "FileNotFoundError" in rows[1]["error"]
     assert (out / "aaa.json").exists()
+
+
+# F3: study.py needs no special code for a total model outage; review_run's
+# ModelUnavailable is just another exception the existing `except Exception`
+# turns into an error row instead of ending the whole study.
+async def test_a_total_model_outage_is_recorded_as_an_error_row(tmp_path, demo_seed):
+    bench = tmp_path / "bench"
+    bench.mkdir()
+    seeds_dir = bench / "seeds" / study.TASK
+    runs_dir = bench / "runs" / study.TASK
+    seeds_dir.mkdir(parents=True)
+    runs_dir.mkdir(parents=True)
+
+    pairs = [{"task": study.TASK, "wrong": "outage.diff", "control": "c.diff"}]
+    (bench / "pairs.json").write_text(json.dumps(pairs), encoding="utf-8", newline="\n")
+
+    (seeds_dir / "outage.json").write_text(demo_seed.to_json(), encoding="utf-8", newline="\n")
+    report = {"results": [asdict(a_survivor(NO_GUARD))]}
+    (runs_dir / "outage.json").write_text(json.dumps(report), encoding="utf-8", newline="\n")
+
+    out = tmp_path / "out"
+    client = ScriptedClient(raises=openai.OpenAIError("access denied"))
+    rows = await study.study(bench, demo_seed, FakeSandboxRunner(), client, out)
+
+    assert len(rows) == 1
+    assert rows[0]["patch"] == "outage"
+    assert "ModelUnavailable" in rows[0]["error"]
+    assert not (out / "outage.json").exists()

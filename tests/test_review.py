@@ -3,11 +3,15 @@
 import json
 from dataclasses import asdict
 
+import openai
+import pytest
+
+from chesterton.llm.client import TruncatedResponse
 from chesterton.review import review_run
 from chesterton.sandbox.fake import FakeSandboxRunner
 from chesterton.sandbox.protocol import RunResult
 
-from conftest import NO_GUARD, ScriptedClient, a_survivor, finding_reply
+from conftest import HEAD_PAY, NO_GUARD, T_CHARGE, ScriptedClient, a_survivor, finding_reply
 
 TEST_PAY = "from pay import charge\n\n\ndef test_charge():\n    assert charge(3) == 3\n"
 GOOD = "```python\nimport pytest\nfrom pay import charge\n\n\ndef test_zero():\n    with pytest.raises(ValueError):\n        charge(0)\n```"
@@ -79,3 +83,144 @@ async def test_the_json_carries_windows_and_the_test_but_never_whole_modules(dem
     assert payload["regression"]["verified"] is True
     assert "def test_zero" in payload["regression"]["source"]
     assert payload["triage"]["headline"][0]["evidence"]["file"] == "pay.py"
+
+
+# F3: the repair feedback and the final note must name the real reason
+# generation produced nothing, never a generic "no parseable test module".
+class TruncatingOnceClient(ScriptedClient):
+    """The first WRITE call is truncated; the second gets a good reply."""
+
+    def __init__(self):
+        super().__init__(by_marker={TRIAGE: [finding_reply()] * 3})
+        self._writes = 0
+
+    async def complete(self, prompt, *, model, max_tokens=2048, thinking=False):
+        if WRITE in prompt:
+            self._writes += 1
+            self.calls.append({"prompt": prompt, "model": model,
+                                "max_tokens": max_tokens, "thinking": thinking})
+            if self._writes == 1:
+                raise TruncatedResponse("out of tokens")
+            return GOOD
+        return await super().complete(prompt, model=model, max_tokens=max_tokens,
+                                       thinking=thinking)
+
+
+async def test_a_truncated_generation_says_so_in_the_repair_feedback(demo_seed):
+    client = TruncatingOnceClient()
+
+    review = await review_run(demo_seed, REPORT, sandbox(), client)
+
+    assert review.regression.verified and review.regression.attempts == 2
+    [write_two] = [c for c in client.calls if WRITE in c["prompt"]][1:]
+    assert "ran out of tokens" in write_two["prompt"]
+    assert "no parseable test module" not in write_two["prompt"]
+
+
+async def test_a_generation_that_never_produces_source_notes_the_last_failure(demo_seed):
+    class AlwaysUnavailableForWrites(ScriptedClient):
+        def __init__(self):
+            super().__init__(by_marker={TRIAGE: [finding_reply()] * 3})
+
+        async def complete(self, prompt, *, model, max_tokens=2048, thinking=False):
+            if WRITE in prompt:
+                self.calls.append({"prompt": prompt, "model": model,
+                                    "max_tokens": max_tokens, "thinking": thinking})
+                raise openai.OpenAIError("down")
+            return await super().complete(prompt, model=model, max_tokens=max_tokens,
+                                           thinking=thinking)
+
+    review = await review_run(demo_seed, REPORT, sandbox(), AlwaysUnavailableForWrites())
+
+    assert review.regression.source is None
+    assert review.regression.verification is None
+    assert "unavailable" in review.regression.note
+
+
+# F4: a sandbox that cannot even be read from must not lose the triage that
+# already ran, or bury the review under a traceback.
+class BrokenReadRunner(FakeSandboxRunner):
+    async def read_file(self, checkpoint_id, path):
+        raise RuntimeError("NEBIUS_PROJECT_ID is not set")
+
+
+async def test_a_broken_sandbox_read_keeps_the_triage_and_notes_the_failure(demo_seed):
+    client = ScriptedClient(by_marker={TRIAGE: [finding_reply()] * 3})
+    runner = BrokenReadRunner(handler=lambda c, s, f: RunResult("", "", 0, None))
+
+    review = await review_run(demo_seed, REPORT, runner, client)
+
+    assert len(review.triage.headline) == 1
+    assert review.regression is not None and review.regression.verified is False
+    assert "RuntimeError" in review.regression.note
+
+
+# F5: nothing checked that the seed and the run report belong together.
+async def test_a_run_report_for_a_different_slug_is_refused(demo_seed):
+    mismatched = {**REPORT, "slug": "someone-elses-slug"}
+
+    with pytest.raises(ValueError, match="someone-elses-slug"):
+        await review_run(demo_seed, mismatched, sandbox(), ScriptedClient())
+
+
+async def test_a_run_report_with_a_matching_slug_is_accepted(demo_seed):
+    client = ScriptedClient(by_marker={TRIAGE: [finding_reply()] * 3, WRITE: [GOOD]})
+    matching = {**REPORT, "slug": demo_seed.slug}
+
+    review = await review_run(demo_seed, matching, sandbox(), client)
+
+    assert review.regression.verified
+
+
+async def test_a_run_report_with_no_slug_at_all_is_accepted(demo_seed):
+    # Older reports never carried a slug; nothing to check against.
+    client = ScriptedClient(by_marker={TRIAGE: [finding_reply()] * 3})
+
+    review = await review_run(demo_seed, REPORT, sandbox(), client)
+
+    assert review.slug == demo_seed.slug
+
+
+# M1: the regression test targets the first headline that HAS covering
+# tests, not blindly headline[0]. Safety always ranks first regardless of
+# test count, so a safety finding with no covering test must not block a
+# functional finding that has one.
+SAFETY_NO_TESTS = a_survivor(NO_GUARD, rationale="M-SAFETY", tests=())
+FUNCTIONAL_WITH_TESTS = a_survivor(
+    HEAD_PAY.replace("    return amount\n", "    return 0\n"), start=4, end=4,
+    rationale="M-FUNC", tests=(T_CHARGE,),
+)
+TWO_HEADLINE_REPORT = {
+    "results": [asdict(SAFETY_NO_TESTS), asdict(FUNCTIONAL_WITH_TESTS)]
+}
+
+
+async def test_a_safety_headline_with_no_tests_is_skipped_for_one_that_has_them(demo_seed):
+    client = ScriptedClient(by_marker={
+        "M-SAFETY": [finding_reply(category="safety")] * 3,
+        "M-FUNC": [finding_reply(category="functional")] * 3,
+        WRITE: [GOOD],
+    })
+
+    review = await review_run(demo_seed, TWO_HEADLINE_REPORT, sandbox(), client)
+
+    assert [h.evidence.rationale for h in review.triage.headline] == ["M-SAFETY", "M-FUNC"]
+    assert review.regression is not None
+    assert review.regression.note != "no covering test to place a new test beside"
+    assert review.regression.verified
+
+
+async def test_the_no_covering_test_note_is_kept_when_no_headline_has_tests(demo_seed):
+    no_tests_either = a_survivor(
+        HEAD_PAY.replace("    return amount\n", "    return 0\n"), start=4, end=4,
+        rationale="M-FUNC2", tests=(),
+    )
+    report = {"results": [asdict(SAFETY_NO_TESTS), asdict(no_tests_either)]}
+    client = ScriptedClient(by_marker={
+        "M-SAFETY": [finding_reply(category="safety")] * 3,
+        "M-FUNC2": [finding_reply(category="functional")] * 3,
+    })
+
+    review = await review_run(demo_seed, report, sandbox(), client)
+
+    assert review.regression.note == "no covering test to place a new test beside"

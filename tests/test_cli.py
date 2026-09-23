@@ -324,3 +324,41 @@ def test_review_without_its_inputs_says_so(tmp_path, capsys):
 
     assert code == 1
     assert "no seed" in capsys.readouterr().err
+
+
+# F3: a total model outage must exit loudly, not write "0 headline findings"
+# and exit 0.
+def test_a_total_model_outage_exits_2_with_the_cause(tmp_path, demo_seed, capsys):
+    import openai
+
+    seed, run = review_files(tmp_path, demo_seed)
+    out = tmp_path / "review.json"
+    client = ScriptedClient(raises=openai.OpenAIError("access denied"))
+
+    code = main(["review", str(seed), str(run), "--out", str(out)],
+                runner_factory=a_reviewing_runner, client_factory=lambda: client)
+
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "unavailable" in err.lower()
+    assert "NEBIUS_API_KEY" in err
+    assert not out.exists()
+
+
+# F5: nothing checked that the seed and the run report belong together.
+def test_a_run_report_for_a_different_seed_exits_1(tmp_path, demo_seed, capsys):
+    seed = tmp_path / "seed.json"
+    seed.write_text(demo_seed.to_json(), encoding="utf-8")
+    run = tmp_path / "run.json"
+    run.write_text(
+        json.dumps({"slug": "someone-elses-slug", "results": [asdict(a_survivor(NO_GUARD))]}),
+        encoding="utf-8",
+    )
+    out = tmp_path / "review.json"
+
+    code = main(["review", str(seed), str(run), "--out", str(out)],
+                runner_factory=a_reviewing_runner, client_factory=lambda: ScriptedClient())
+
+    assert code == 1
+    assert "someone-elses-slug" in capsys.readouterr().err
+    assert not out.exists()
