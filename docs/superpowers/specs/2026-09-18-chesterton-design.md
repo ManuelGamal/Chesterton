@@ -342,15 +342,31 @@ artifact is the JiTTest of §2.
 `chesterton review SEED RUN` reads an existing run, so runs and the benchmark
 never change. Decisions the section above left open:
 
-- **Pre-filter:** one rule, right by construction: every changed line is a
-  one-line logging, print or warnings call. Anything uncertain goes to the model.
+- **Pre-filter:** one rule, right by construction, decided from an `ast`
+  check on the diff between the mutant's WHOLE original and mutated modules
+  (never the display window, which an operator can edit past): every changed
+  line is a single whole-line call to `print` (with no `file=` keyword) or to
+  a logger method (`debug`/`info`/`warning`/`warn`/`error`/`exception`/
+  `critical`/`log` on a logger-named receiver), with no call or other side
+  effect in its arguments. `warnings.warn` is deliberately NOT dismissed - a
+  warning's category is observable (`pytest.warns`, `-W error`, a project's
+  own `filterwarnings = error`) - so it goes to the model like anything else
+  uncertain.
 - **Headline:** confident `untested_invariant`, ranked safety first, then by
   how many tests ran it and still passed; at most one per hunk and three per
   run; each confirmed 3 of 3 times, or it is only "worth a look".
-- **Regression test:** for the first headline only, written by Ultra beside
-  the covering test (`test_chesterton_regression.py`), verified in two forks
-  (exit 0 on the PR, exit 1 on the mutant; any other code proves nothing),
-  repaired once with the failing output. At most 4 sandbox ops per review.
+- **A total model outage is an error, not "0 findings".** A bad key or a
+  denied model must not read as a clean review: if every survivor sent to
+  the model came back unavailable, `chesterton review` exits 2 naming the
+  cause instead of writing a report that looks like nothing was found.
+- **Regression test:** for the first headline with a covering test, written
+  by Ultra beside the covering test (`test_chesterton_regression.py`),
+  verified in two forks (exit 0 on the PR, exit 1 on the mutant; any other
+  code proves nothing), repaired once with the failing output. At most 4
+  sandbox ops per review.
+- **The ~1024 reasoning budget above is not enforced.** The code sizes
+  `max_tokens` at 8192 (thinking plus a short JSON answer) and has no way to
+  cap thinking tokens separately from the reply.
 - **Measured before it is pitched:** `scripts/review_study.py` runs it on
   matplotlib-23314's 13 wrong agent patches and checks each verified test
   against the gold fix. A test that fails on gold encoded the agent's bug and
