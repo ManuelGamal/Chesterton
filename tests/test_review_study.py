@@ -6,6 +6,7 @@ from pathlib import Path
 from chesterton.execute.pool import SandboxPool
 from chesterton.sandbox.fake import FakeSandboxRunner
 from chesterton.sandbox.protocol import RunResult
+from conftest import ScriptedClient
 
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "review_study.py"
 _spec = importlib.util.spec_from_file_location("review_study", _SCRIPT)
@@ -39,13 +40,53 @@ async def test_anything_else_on_gold_is_an_error(demo_seed):
 
 def test_the_summary_counts_each_outcome():
     rows = [
-        {"patch": "a", "headline": 1, "verified": True, "gold": "passes_on_gold"},
-        {"patch": "b", "headline": 1, "verified": True, "gold": "fails_on_gold"},
-        {"patch": "c", "headline": 0, "verified": False, "gold": None},
+        {"patch": "a", "headline": 1, "verified": True, "gold": "passes_on_gold", "error": None},
+        {"patch": "b", "headline": 1, "verified": True, "gold": "fails_on_gold", "error": None},
+        {"patch": "c", "headline": 0, "verified": False, "gold": None, "error": None},
+        {"patch": "d", "headline": 0, "verified": False, "gold": None, "error": "boom"},
     ]
 
     text = study.summarise(rows)
 
-    assert "3 patches" in text and "2 with a headline finding" in text
+    assert "4 patches" in text and "2 with a headline finding" in text
     assert "2 verified tests" in text
     assert "1 consistent with the gold fix" in text and "1 encode the agent's behaviour" in text
+    assert "1 patches could not be studied" in text
+
+
+async def test_one_broken_patch_does_not_end_the_study(tmp_path, demo_seed):
+    # Build a bench directory with two patches, but only provide files for the first
+    bench = tmp_path / "bench"
+    bench.mkdir()
+    seeds_dir = bench / "seeds" / study.TASK
+    runs_dir = bench / "runs" / study.TASK
+    seeds_dir.mkdir(parents=True)
+    runs_dir.mkdir(parents=True)
+
+    # Write pairs.json with two patches
+    pairs = [
+        {"task": study.TASK, "wrong": "aaa.diff", "control": "c1.diff"},
+        {"task": study.TASK, "wrong": "bbb.diff", "control": "c2.diff"},
+    ]
+    (bench / "pairs.json").write_text(
+        __import__("json").dumps(pairs), encoding="utf-8", newline="\n"
+    )
+
+    # Write only aaa's files
+    (seeds_dir / "aaa.json").write_text(demo_seed.to_json(), encoding="utf-8", newline="\n")
+    (runs_dir / "aaa.json").write_text(
+        __import__("json").dumps({"results": []}), encoding="utf-8", newline="\n"
+    )
+
+    # Leave bbb's files missing
+
+    out = tmp_path / "out"
+    rows = await study.study(bench, demo_seed, FakeSandboxRunner(), ScriptedClient(), out)
+
+    assert len(rows) == 2
+    assert rows[0]["patch"] == "aaa"
+    assert rows[0]["error"] is None
+    assert rows[0]["headline"] == 0
+    assert rows[1]["patch"] == "bbb"
+    assert "FileNotFoundError" in rows[1]["error"]
+    assert (out / "aaa.json").exists()

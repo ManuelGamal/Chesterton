@@ -51,24 +51,24 @@ async def gold_check(pool: SandboxPool, gold_seed: SeedRecord, test_path: str, t
 
 def summarise(rows: list[dict]) -> str:
     verified = [r for r in rows if r["verified"]]
+    n_errors = sum(1 for r in rows if r.get("error"))
     return "\n".join([
         f"{len(rows)} patches, {sum(r['headline'] > 0 for r in rows)} with a headline finding, "
         f"{len(verified)} verified tests",
         f"  {sum(r['gold'] == 'passes_on_gold' for r in verified)} consistent with the gold fix, "
         f"{sum(r['gold'] == 'fails_on_gold' for r in verified)} encode the agent's behaviour, "
         f"{sum(r['gold'] == 'error' for r in verified)} could not be checked",
+        f"  {n_errors} patches could not be studied",
     ])
 
 
-async def main(bench: Path, gold_path: Path, out: Path) -> int:
+async def study(bench: Path, gold: SeedRecord, runner, client, out: Path) -> list[dict]:
+    out.mkdir(parents=True, exist_ok=True)
     pairs = json.loads((bench / "pairs.json").read_text(encoding="utf-8"))
     wrong = sorted({p["wrong"] for p in pairs if p["task"] == TASK})
-    gold = SeedRecord.from_json(gold_path.read_text(encoding="utf-8"))
-    runner, client = ConTreeSandboxRunner(), NemotronClient()
-    out.mkdir(parents=True, exist_ok=True)
     rows = []
-    try:
-        for patch in wrong:
+    for patch in wrong:
+        try:
             stem = Path(patch).stem
             seed = SeedRecord.from_json((bench / "seeds" / TASK / f"{stem}.json").read_text(encoding="utf-8"))
             report = json.loads((bench / "runs" / TASK / f"{stem}.json").read_text(encoding="utf-8"))
@@ -78,9 +78,24 @@ async def main(bench: Path, gold_path: Path, out: Path) -> int:
             verdict = None
             if test is not None and test.verified:
                 verdict = await gold_check(SandboxPool(runner, op_budget=1), gold, test.path, test.source)
-            rows.append({"patch": stem, "headline": len(review.triage.headline),
-                         "verified": bool(test and test.verified), "gold": verdict})
-            print(f"  {stem}: {rows[-1]}")
+            row = {"patch": stem, "headline": len(review.triage.headline),
+                   "verified": bool(test and test.verified), "gold": verdict, "error": None}
+            rows.append(row)
+            print(f"  {stem}: {row}")
+        except Exception as exc:
+            row = {"patch": stem, "headline": 0, "verified": False, "gold": None,
+                   "error": f"{type(exc).__name__}: {exc}"}
+            rows.append(row)
+            print(f"  {stem}: {row}")
+    return rows
+
+
+async def main(bench: Path, gold_path: Path, out: Path) -> int:
+    gold = SeedRecord.from_json(gold_path.read_text(encoding="utf-8"))
+    runner, client = ConTreeSandboxRunner(), NemotronClient()
+    out.mkdir(parents=True, exist_ok=True)
+    try:
+        rows = await study(bench, gold, runner, client, out)
     finally:
         await runner.aclose()
     (out / "summary.json").write_text(json.dumps(rows, indent=2), encoding="utf-8", newline="\n")
