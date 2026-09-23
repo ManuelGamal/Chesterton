@@ -1,0 +1,148 @@
+{
+  "meta": {
+    "id": "hero",
+    "tab": "Wrong patch, caught",
+    "title": "Demo story",
+    "pr_title": "Require a non-zero amount",
+    "repo": "acme/pay",
+    "task": "demo",
+    "submission": "an agent",
+    "utboost": "wrong",
+    "chesterton_commit": "test000",
+    "recorded": "2026-09-19T00:00:00+00:00"
+  },
+  "patch": {
+    "diff": "diff --git a/pay.py b/pay.py\n--- a/pay.py\n+++ b/pay.py\n@@ -1,2 +1,4 @@\n def charge(amount):\n+    if not amount:\n+        raise ValueError(\"required\")\n     return amount\n",
+    "dropped_files": [
+      "README.md"
+    ]
+  },
+  "lanes": [
+    {
+      "id": "L0",
+      "file": "pay.py",
+      "start_line": 2,
+      "end_line": 3
+    },
+    {
+      "id": "L1",
+      "file": "pay.py",
+      "start_line": 4,
+      "end_line": 4
+    }
+  ],
+  "mutants": [
+    {
+      "id": "m0",
+      "lane": "L0",
+      "file": "pay.py",
+      "start_line": 2,
+      "end_line": 3,
+      "operator": "semantic",
+      "verdict": "survived",
+      "tests": 1,
+      "start_s": 0.0,
+      "duration_s": 2.0,
+      "before": "    1 | def charge(amount):\n    2 |     if not amount:\n    3 |         raise ValueError(\"required\")\n    4 |     return amount",
+      "after": "    1 | def charge(amount):\n    2 |     return amount"
+    },
+    {
+      "id": "m1",
+      "lane": "L1",
+      "file": "pay.py",
+      "start_line": 4,
+      "end_line": 4,
+      "operator": "semantic",
+      "verdict": "killed",
+      "tests": 1,
+      "start_s": 0.0,
+      "duration_s": 3.0,
+      "before": "    2 |     if not amount:\n    3 |         raise ValueError(\"required\")\n    4 |     return amount",
+      "after": "    2 |     if not amount:\n    3 |         raise ValueError(\"required\")\n    4 |     return 0"
+    },
+    {
+      "id": "m2",
+      "lane": "L1",
+      "file": "pay.py",
+      "start_line": 4,
+      "end_line": 4,
+      "operator": "semantic",
+      "verdict": "uncovered",
+      "tests": 0,
+      "start_s": 0.0,
+      "duration_s": 0.0,
+      "before": "    2 |     if not amount:\n    3 |         raise ValueError(\"required\")\n    4 |     return amount",
+      "after": "    2 |     if not amount:\n    3 |         raise ValueError(\"required\")\n    4 |     return 1"
+    }
+  ],
+  "tier0": [
+    {
+      "file": "pay.py",
+      "line": 3
+    }
+  ],
+  "ddmin": {
+    "undefended": [
+      {
+        "file": "pay.py",
+        "start_line": 1,
+        "end_line": 4
+      }
+    ],
+    "probes": 3
+  },
+  "triage": {
+    "headline": [
+      {
+        "id": "h0",
+        "file": "pay.py",
+        "start_line": 2,
+        "end_line": 3,
+        "operator": "semantic",
+        "rationale": "drop the guard",
+        "original": "    1 | def charge(amount):\n    2 |     if not amount:\n    3 |         raise ValueError(\"required\")\n    4 |     return amount",
+        "mutated": "    1 | def charge(amount):\n    2 |     return amount",
+        "diff": "--- a/pay.py\n+++ b/pay.py\n def charge(amount):\n-    if not amount:\n-        raise ValueError(\"required\")\n     return amount",
+        "tests": [
+          "tests/test_pay.py::test_charge"
+        ],
+        "label": "untested_invariant",
+        "category": "safety",
+        "confident": true,
+        "explanation": "the guard is never exercised",
+        "agreement": 3
+      }
+    ],
+    "worth_a_look": [],
+    "dismissed": [],
+    "model_calls": 3
+  },
+  "regression": {
+    "finding_id": "h0",
+    "path": "tests/test_chesterton_regression.py",
+    "source": "import pytest\nfrom pay import charge\n\n\ndef test_zero():\n    with pytest.raises(ValueError):\n        charge(0)\n",
+    "status": "verified",
+    "detail": "passes on the pull request, fails on the mutant",
+    "patch_tail": "",
+    "mutant_tail": "",
+    "attempts": 1,
+    "note": null,
+    "verified": true,
+    "gold": "passes_on_gold"
+  },
+  "counters": {
+    "sandbox_ops": 8,
+    "lightning_calls": 5,
+    "super_calls": 3,
+    "ultra_calls": 1,
+    "run_wall_s": 42.0
+  },
+  "timeline": {
+    "generate_s": 16.0,
+    "mutants_end_s": 3.0,
+    "ddmin_s": 16.0,
+    "triage_s": 16.0,
+    "regression_s": 16.0,
+    "total_s": 67.0
+  }
+}
