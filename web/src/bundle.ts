@@ -24,7 +24,7 @@ export interface Regression {
 
 export interface Bundle {
   meta: {
-    id: string; tab: string; title: string; pr_title: string; repo: string; task: string;
+    id: string; tab: string; title: string; system: string; pr_title: string; repo: string; task: string;
     submission: string; utboost: "wrong" | "correct"; chesterton_commit: string; recorded: string;
   };
   patch: { diff: string; dropped_files: string[] };
@@ -74,7 +74,7 @@ const REGRESSION_KEYS = [
 ] as const;
 
 const META_KEYS = [
-  "id", "tab", "title", "pr_title", "repo", "task",
+  "id", "tab", "title", "system", "pr_title", "repo", "task",
   "submission", "utboost", "chesterton_commit", "recorded",
 ] as const;
 

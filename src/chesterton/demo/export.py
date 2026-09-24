@@ -124,6 +124,7 @@ def build_bundle(
     return {
         "meta": {
             "id": story["id"], "tab": story["tab"], "title": story["title"],
+            "system": story["system"],
             "pr_title": seed.pr.title, "repo": f"{seed.pr.owner}/{seed.pr.repo}",
             "task": seed.slug, "submission": submission, "utboost": story["utboost"],
             "chesterton_commit": commit, "recorded": seed.built_at,

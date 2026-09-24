@@ -3,12 +3,13 @@
   "id": "hero",
   "tab": "Wrong patch, caught",
   "title": "An agent's fix passed SWE-bench. Here is what its tests let through.",
+  "system": "Agentless 1.5 + Claude 3.5 Sonnet",
   "pr_title": "matplotlib__matplotlib-23314: 6d83e35469d2",
   "repo": "matplotlib/matplotlib",
   "task": "bm-matplotlib-matplotlib-23314-6d83e35469d2",
   "submission": "verified/20241202_agentless-1.5_claude-3.5-sonnet-20241022",
   "utboost": "wrong",
-  "chesterton_commit": "16c9e86",
+  "chesterton_commit": "988d095",
   "recorded": "2026-09-20T16:03:39+00:00"
  },
  "patch": {

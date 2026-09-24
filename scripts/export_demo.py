@@ -26,6 +26,7 @@ _MISSING = object()  # Sentinel for missing gold lookup
 STORIES = [
     {"id": "hero", "tab": "Wrong patch, caught", "utboost": "wrong",
      "title": "An agent's fix passed SWE-bench. Here is what its tests let through.",
+     "system": "Agentless 1.5 + Claude 3.5 Sonnet",
      "seed": f"benchmark-v2/seeds/{TASK}/6d83e35469d2.json",
      "run": f"benchmark-v2/runs/{TASK}/6d83e35469d2.json",
      "review": "review-study-2/6d83e35469d2.json",
@@ -33,6 +34,9 @@ STORIES = [
      "submission": (SCREEN, "6d83e35469d2")},
     {"id": "limit", "tab": "The honest limit", "utboost": "wrong",
      "title": "A verified test can still encode the agent's bug.",
+     # This story's own submission is verified/20241202_amazon-q-developer-agent-20241202-dev
+     # (checked in web/public/stories/limit.json), not the agentless-1.5 one hero uses.
+     "system": "Amazon Q Developer Agent",
      "seed": f"benchmark-v2/seeds/{TASK}/92beef201cfd.json",
      "run": f"benchmark-v2/runs/{TASK}/92beef201cfd.json",
      "review": "review-study-2/92beef201cfd.json",
@@ -40,6 +44,7 @@ STORIES = [
      "submission": (SCREEN, "92beef201cfd")},
     {"id": "gold", "tab": "The correct fix", "utboost": "correct",
      "title": "The reference fix: well defended, and a quiet review.",
+     "system": "Reference fix (SWE-bench gold)",
      "seed": "seeds/matplotlib-23314.json",
      "run": "runs/matplotlib-23314.json",
      "review": "review-gold/matplotlib-23314.json",

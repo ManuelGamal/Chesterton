@@ -3,6 +3,7 @@
     "id": "hero",
     "tab": "Wrong patch, caught",
     "title": "Demo story",
+    "system": "Test System",
     "pr_title": "Require a non-zero amount",
     "repo": "acme/pay",
     "task": "demo",

@@ -15,7 +15,8 @@ from chesterton.sandbox.protocol import RunResult
 from conftest import DEMO_DIFF, HEAD_PAY, NO_GUARD, ScriptedClient, a_survivor, finding_reply
 
 GOLDEN = Path(__file__).parent / "fixtures" / "demo_example_bundle.json"
-STORY = {"id": "hero", "tab": "Wrong patch, caught", "title": "Demo story", "utboost": "wrong"}
+STORY = {"id": "hero", "tab": "Wrong patch, caught", "title": "Demo story", "utboost": "wrong",
+        "system": "Test System"}
 GOOD = "```python\nimport pytest\nfrom pay import charge\n\n\ndef test_zero():\n    with pytest.raises(ValueError):\n        charge(0)\n```"
 # The conftest diff has no `diff --git` headers; real PR diffs do, and the
 # exporter splits files on them.
@@ -113,6 +114,12 @@ async def test_findings_regression_and_counters_are_carried_over(demo_seed):
     assert bundle["tier0"] == [{"file": "pay.py", "line": 3}]
 
 
+async def test_the_bundle_names_the_system_under_review(demo_seed):
+    bundle = await a_bundle(demo_seed)
+
+    assert bundle["meta"]["system"] == "Test System"
+
+
 async def test_the_timeline_adds_up(demo_seed):
     tl = (await a_bundle(demo_seed))["timeline"]
 
@@ -163,10 +170,10 @@ def test_a_story_whose_inputs_are_missing_is_skipped_not_faked(tmp_path, demo_se
               "regression": None, "ops_used": 0}
     (tmp_path / "review.json").write_text(json.dumps(review), encoding="utf-8")
     stories = [
-        {"id": "present", "tab": "A", "title": "t", "utboost": "wrong", "seed": "seed.json",
-         "run": "run.json", "review": "review.json", "gold": None, "submission": "x"},
-        {"id": "absent", "tab": "B", "title": "t", "utboost": "correct", "seed": "nope.json",
-         "run": "nope.json", "review": "nope.json", "gold": None, "submission": "y"},
+        {"id": "present", "tab": "A", "title": "t", "utboost": "wrong", "system": "System A",
+         "seed": "seed.json", "run": "run.json", "review": "review.json", "gold": None, "submission": "x"},
+        {"id": "absent", "tab": "B", "title": "t", "utboost": "correct", "system": "System B",
+         "seed": "nope.json", "run": "nope.json", "review": "nope.json", "gold": None, "submission": "y"},
     ]
     out = tmp_path / "out"
 
