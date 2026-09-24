@@ -1,0 +1,11 @@
+{
+  "installCommand": "cd web && npm ci",
+  "buildCommand": "cd web && npm run build",
+  "outputDirectory": "web/dist",
+  "functions": {
+    "api/why.py": {
+      "maxDuration": 60,
+      "includeFiles": "{src/chesterton/**,web/public/stories/*.json}"
+    }
+  }
+}
