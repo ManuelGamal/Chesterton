@@ -17,6 +17,24 @@ describe("bundle", () => {
     const broken = { ...golden, timeline: undefined };
     expect(() => assertBundle(broken)).toThrow(/timeline/);
   });
+
+  it("rejects a mutant missing a field", () => {
+    const copy = structuredClone(golden);
+    delete copy.mutants[0].verdict;
+    expect(() => assertBundle(copy)).toThrow(/verdict/);
+  });
+
+  it("rejects a finding missing a field", () => {
+    const copy = structuredClone(golden);
+    delete copy.triage.headline[0].agreement;
+    expect(() => assertBundle(copy)).toThrow(/agreement/);
+  });
+
+  it("accepts a null regression", () => {
+    const copy = structuredClone(golden);
+    copy.regression = null;
+    expect(() => assertBundle(copy)).not.toThrow();
+  });
 });
 
 describe("verdicts", () => {

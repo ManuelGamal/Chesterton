@@ -53,6 +53,48 @@ export interface StoryIndex { stories: { id: string; tab: string }[] }
 
 const SECTIONS = ["meta", "patch", "lanes", "mutants", "tier0", "ddmin", "triage", "counters", "timeline"] as const;
 
+const LANE_KEYS = ["id", "file", "start_line", "end_line"] as const;
+
+const MUTANT_KEYS = [
+  "id", "lane", "file", "start_line", "end_line",
+  "operator", "verdict", "tests", "start_s", "duration_s",
+  "before", "after",
+] as const;
+
+const FINDING_KEYS = [
+  "id", "file", "start_line", "end_line", "operator",
+  "rationale", "original", "mutated", "diff", "tests",
+  "label", "category", "confident", "explanation", "agreement",
+] as const;
+
+const REGRESSION_KEYS = [
+  "finding_id", "path", "source", "status",
+  "detail", "patch_tail", "mutant_tail", "attempts",
+  "note", "verified", "gold",
+] as const;
+
+const META_KEYS = [
+  "id", "tab", "title", "pr_title", "repo", "task",
+  "submission", "utboost", "chesterton_commit", "recorded",
+] as const;
+
+const TIMELINE_KEYS = [
+  "generate_s", "mutants_end_s", "ddmin_s", "triage_s", "regression_s", "total_s",
+] as const;
+
+const COUNTER_KEYS = [
+  "sandbox_ops", "lightning_calls", "super_calls", "ultra_calls", "run_wall_s",
+] as const;
+
+/** Throws if `obj` is missing any of `keys`. Uses `in` so a present-but-null field passes. */
+function requireKeys(obj: unknown, keys: readonly string[], where: string): void {
+  if (typeof obj !== "object" || obj === null) throw new Error(`bundle ${where} is not an object`);
+  const o = obj as Record<string, unknown>;
+  for (const key of keys) {
+    if (!(key in o)) throw new Error(`bundle ${where} is missing ${key}`);
+  }
+}
+
 /** Guards the Python exporter and this type against drifting apart. */
 export function assertBundle(x: unknown): asserts x is Bundle {
   if (typeof x !== "object" || x === null) throw new Error("bundle is not an object");
@@ -65,4 +107,24 @@ export function assertBundle(x: unknown): asserts x is Bundle {
     throw new Error("bundle timeline has no total_s");
   }
   if (!Array.isArray(b.mutants)) throw new Error("bundle mutants is not a list");
+
+  requireKeys(b.meta, META_KEYS, "meta");
+  requireKeys(b.timeline, TIMELINE_KEYS, "timeline");
+  requireKeys(b.counters, COUNTER_KEYS, "counters");
+
+  const lanes = b.lanes as unknown[];
+  lanes.forEach((lane, i) => requireKeys(lane, LANE_KEYS, `lanes[${i}]`));
+
+  const mutants = b.mutants as unknown[];
+  mutants.forEach((mutant, i) => requireKeys(mutant, MUTANT_KEYS, `mutants[${i}]`));
+
+  const triage = b.triage as Record<string, unknown>;
+  for (const bucket of ["headline", "worth_a_look", "dismissed"] as const) {
+    const findings = triage[bucket] as unknown[];
+    findings.forEach((finding, i) => requireKeys(finding, FINDING_KEYS, `triage.${bucket}[${i}]`));
+  }
+
+  if (b.regression !== null) {
+    requireKeys(b.regression, REGRESSION_KEYS, "regression");
+  }
 }
