@@ -4,10 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { assertBundle, type Bundle, type DiffLine, type Finding, type StoryIndex } from "./bundle";
 import { AboutDialog } from "./components/AboutDialog";
 import { DiffPane } from "./components/DiffPane";
-import { FindingPanel } from "./components/FindingPanel";
+import { FindingPanel, FindingSide } from "./components/FindingPanel";
 import { Lanes } from "./components/Lanes";
 import { ReplayControls } from "./components/ReplayControls";
 import { stateAt } from "./engine";
+import { labelWords, span } from "./format";
 import { useReplay } from "./useReplay";
 
 async function fetchJson(url: string): Promise<unknown> {
@@ -42,9 +43,9 @@ export default function App() {
   if (!index) return <main className="p-6 text-muted-foreground">Loading…</main>;
   return (
     <Tabs.Root value={active} onValueChange={setActive} className="flex h-full flex-col">
-      <header className="flex items-center gap-4 border-b border-border bg-card px-4 py-2">
+      <header className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-border bg-card px-4 py-2">
         <span className="font-semibold">Chesterton</span>
-        <Tabs.List aria-label="Stories" className="flex gap-1">
+        <Tabs.List aria-label="Stories" className="flex flex-wrap gap-1">
           {index.stories.map((s, i) => (
             <Tabs.Trigger key={s.id} value={s.id}
               className="cursor-pointer rounded-md px-3 py-1 text-[14px] text-muted-foreground data-[state=active]:bg-muted data-[state=active]:text-foreground">
@@ -117,14 +118,22 @@ function StoryView({ bundle, lines }: { bundle: Bundle; lines: DiffLine[] }) {
   const onKeyRef = useRef<(e: KeyboardEvent) => void>(() => {});
   onKeyRef.current = (e: KeyboardEvent) => {
     if (document.querySelector("dialog[open]")) return;
-    const tag = (e.target as HTMLElement).tagName;
-    if (["INPUT", "SELECT", "BUTTON", "TEXTAREA"].includes(tag)) return;
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    const el = e.target instanceof Element ? e.target : null;
+    const tag = el?.tagName ?? "";
     if (e.key === " ") {
+      // Space activates a focused button, so leave it to the button.
+      if (["INPUT", "SELECT", "BUTTON", "TEXTAREA"].includes(tag)) return;
       e.preventDefault();
       if (clock.playing) clock.pause();
       else clock.play();
+      return;
     }
-    if ((e.key === "ArrowRight" || e.key === "ArrowLeft") && state.showTriage && headline.length) {
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      // Arrows belong to form fields and to tab lists (the story tabs, the PR/mutant switch).
+      if (["INPUT", "SELECT", "TEXTAREA"].includes(tag)) return;
+      if (el?.closest("[role=tab], [role=tablist]")) return;
+      if (!state.showTriage || headline.length === 0) return;
       const i = focus ? headline.findIndex((f) => f.id === focus.id) : -1;
       const next = e.key === "ArrowRight" ? Math.min(i + 1, headline.length - 1) : Math.max(i - 1, 0);
       pick(headline[next]);
@@ -138,40 +147,89 @@ function StoryView({ bundle, lines }: { bundle: Bundle; lines: DiffLine[] }) {
   }, []);
 
   const c = bundle.counters;
+  const m = bundle.meta;
   return (
     <div className="flex h-full flex-col">
       <ReplayControls clock={clock} total={total} state={state} bundle={bundle} />
-      <div className="flex items-baseline gap-4 px-4 py-2">
-        <h1 className="text-[17px] font-semibold">{bundle.meta.title}</h1>
-        <span className="text-[13px] text-muted-foreground">
-          {bundle.meta.repo} · {bundle.meta.submission} · UTBoost: {bundle.meta.utboost === "wrong" ? "proven wrong" : "correct"}
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-4 py-2">
+        <h1 className="text-[17px] font-semibold">{m.title}</h1>
+        <span className="min-w-0 text-[13px] text-muted-foreground">
+          {m.repo} · <span title={m.submission}>patch by {m.system}</span> · UTBoost: {m.utboost === "wrong" ? "proven wrong" : "correct"}
         </span>
-        <span className="ml-auto text-[13px] text-muted-foreground tabular">
-          {c.sandbox_ops} sandboxes · {c.lightning_calls} Lightning · {c.super_calls} Super · {c.ultra_calls} Ultra · {Math.round(c.run_wall_s)} s
+        <span className="text-[13px] text-muted-foreground tabular md:ml-auto">
+          run totals: {c.sandbox_ops} sandboxes · {c.lightning_calls} Lightning · {c.super_calls} Super · {c.ultra_calls} Ultra · {Math.round(c.run_wall_s)} s
         </span>
       </div>
-      <div className="flex min-h-0 flex-1">
-        <div className="flex w-[60%] min-w-0 flex-col border-r border-border">
+      {/* Below md the columns stack and this body scrolls as one; from md up they sit side by side. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-auto md:flex-row md:overflow-hidden">
+        <div className="flex h-[85vh] w-full min-w-0 shrink-0 flex-col border-b border-border md:h-auto md:w-[60%] md:shrink md:border-b-0 md:border-r">
           <div className="min-h-0 flex-1 overflow-auto">
-            <DiffPane lines={lines} bundle={bundle} state={state} focus={focus} onPick={pick} />
+            <DiffPane lines={lines} bundle={bundle} state={state} focus={focus} onPick={pick} reduced={clock.reduced} />
           </div>
           {state.showTriage && focus && (
-            <div className="max-h-[55%] overflow-auto">
-              <FindingPanel storyId={bundle.meta.id} finding={focus} regression={bundle.regression}
-                showRegression={state.showRegression} reduced={clock.reduced} />
+            <div className="h-[42%] shrink-0 overflow-auto border-t border-border bg-card">
+              <FindingPanel finding={focus} reduced={clock.reduced} />
             </div>
           )}
-        </div>
-        <div className="flex w-[40%] min-w-0 flex-col">
-          <Lanes bundle={bundle} state={state} reduced={clock.reduced} />
-          {state.showTriage && (
-            <p className="px-3 py-2 text-[13px] text-muted-foreground">
-              {headline.length} headline · {bundle.triage.worth_a_look.length} worth a look · {bundle.triage.dismissed.length} dismissed
-              {bundle.patch.dropped_files.length > 0 && ` · ${bundle.patch.dropped_files.length} test or scratch files not shown`}
+          {state.showTriage && !focus && headline.length === 0 && (
+            <p className="shrink-0 border-t border-border bg-card px-4 py-3 text-[14px] text-muted-foreground">
+              No headline findings: every survivor was dismissed or judged minor.
             </p>
           )}
         </div>
+        <div className="w-full min-w-0 md:w-[40%] md:overflow-auto">
+          <Lanes bundle={bundle} state={state} reduced={clock.reduced} />
+          {state.showTriage && (
+            <>
+              <p className="px-3 py-2 text-[13px] text-muted-foreground">
+                {headline.length} headline · {bundle.triage.worth_a_look.length} worth a look · {bundle.triage.dismissed.length} dismissed
+                {bundle.patch.dropped_files.length > 0 && ` · ${bundle.patch.dropped_files.length} test or scratch files not shown`}
+              </p>
+              <TriageLists bundle={bundle} focus={focus} onPick={pick} />
+              {focus && (
+                <div className="px-3 pb-4">
+                  <FindingSide storyId={m.id} finding={focus} regression={bundle.regression}
+                    showRegression={state.showRegression} />
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
+    </div>
+  );
+}
+
+/** "axes3d.py:1157 · untested invariant · functional" */
+function describeFinding(f: Finding): string {
+  return `${f.file.split("/").pop()}:${span(f.start_line, f.end_line)} · ${labelWords(f.label)}${f.category ? ` · ${f.category}` : ""}`;
+}
+
+function TriageLists({ bundle, focus, onPick }: { bundle: Bundle; focus: Finding | null; onPick: (f: Finding) => void }) {
+  const { worth_a_look: worth, dismissed } = bundle.triage;
+  const summary = "cursor-pointer py-1 text-muted-foreground";
+  return (
+    <div className="px-3 pb-1 text-[14px]">
+      <details>
+        <summary className={summary}>{`Worth a look (${worth.length})`}</summary>
+        <ul className="mb-2 ml-4 space-y-0.5">
+          {worth.map((f) => (
+            <li key={f.id}>
+              <button type="button" onClick={() => onPick(f)} title={f.file}
+                aria-current={focus?.id === f.id ? "true" : undefined}
+                className="cursor-pointer text-left underline-offset-2 hover:underline aria-[current=true]:text-accent">
+                {describeFinding(f)}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </details>
+      <details>
+        <summary className={summary}>{`Dismissed (${dismissed.length})`}</summary>
+        <ul className="mb-2 ml-4 space-y-0.5 text-muted-foreground">
+          {dismissed.map((f) => <li key={f.id} title={f.file}>{describeFinding(f)}</li>)}
+        </ul>
+      </details>
     </div>
   );
 }
