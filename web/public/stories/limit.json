@@ -1,0 +1,639 @@
+{
+ "meta": {
+  "id": "limit",
+  "tab": "The honest limit",
+  "title": "A verified test can still encode the agent's bug.",
+  "pr_title": "matplotlib__matplotlib-23314: 92beef201cfd",
+  "repo": "matplotlib/matplotlib",
+  "task": "bm-matplotlib-matplotlib-23314-92beef201cfd",
+  "submission": "verified/20241202_amazon-q-developer-agent-20241202-dev",
+  "utboost": "wrong",
+  "chesterton_commit": "b69c692",
+  "recorded": "2026-09-20T16:08:04+00:00"
+ },
+ "patch": {
+  "diff": "diff --git a/lib/mpl_toolkits/mplot3d/axes3d.py b/lib/mpl_toolkits/mplot3d/axes3d.py\nindex 9db44b7994..f29fc6f65d 100644\n--- a/lib/mpl_toolkits/mplot3d/axes3d.py\n+++ b/lib/mpl_toolkits/mplot3d/axes3d.py\n@@ -1145,6 +1145,23 @@ class Axes3D(Axes):\n         self._frameon = bool(b)\n         self.stale = True\n \n+    def set_visible(self, b):\n+        \"\"\"\n+        Set the artist's visibility.\n+\n+        Parameters\n+        ----------\n+        b : bool\n+        \"\"\"\n+        # Call the parent class's set_visible\n+        super().set_visible(b)\n+        # Also hide/show all the 3D-specific elements\n+        self._axis3don = b and self._axis3don\n+        # Mark all contained artists as stale\n+        for artist in self._children:\n+            artist.set_visible(b)\n+        self.stale = True\n+\n     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")\n     def grid(self, visible=True, **kwargs):\n         \"\"\"\n@@ -3246,3 +3263,4 @@ def get_test_data(delta=0.05):\n     Y = Y * 10\n     Z = Z * 500\n     return X, Y, Z\n+\n",
+  "dropped_files": [
+   "lib/matplotlib/tests/test_axes.py",
+   "lib/mpl_toolkits/tests/test_mplot3d.py"
+  ]
+ },
+ "lanes": [
+  {
+   "id": "L0",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1148,
+   "end_line": 1148
+  },
+  {
+   "id": "L1",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1157,
+   "end_line": 1157
+  },
+  {
+   "id": "L2",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1159,
+   "end_line": 1159
+  },
+  {
+   "id": "L3",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1161,
+   "end_line": 1162
+  },
+  {
+   "id": "L4",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1163,
+   "end_line": 1163
+  }
+ ],
+ "mutants": [
+  {
+   "id": "m0",
+   "lane": "L0",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1148,
+   "end_line": 1148,
+   "operator": "semantic",
+   "verdict": "survived",
+   "tests": 0,
+   "start_s": 0.0,
+   "duration_s": 90.395,
+   "before": " 1146 |         self.stale = True\n 1147 | \n 1148 |     def set_visible(self, b):\n 1149 |         \"\"\"\n 1150 |         Set the artist's visibility.",
+   "after": " 1146 |         self.stale = True\n 1147 | \n 1148 |     def set_visible(self, b):\n 1149 |         \"\"\"docstring omitted for brevity\"\"\"\n 1150 |         pass\n 1151 |         \"\"\"\n 1152 |         Set the artist's visibility."
+  },
+  {
+   "id": "m1",
+   "lane": "L0",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1148,
+   "end_line": 1148,
+   "operator": "semantic",
+   "verdict": "killed",
+   "tests": 0,
+   "start_s": 0.0,
+   "duration_s": 91.163,
+   "before": " 1146 |         self.stale = True\n 1147 | \n 1148 |     def set_visible(self, b):\n 1149 |         \"\"\"\n 1150 |         Set the artist's visibility.",
+   "after": " 1146 |         self.stale = True\n 1147 | \n 1148 |     def set_visible(self, b):\n 1149 |         return\n 1150 |         \"\"\"\n 1151 |         Set the artist's visibility."
+  },
+  {
+   "id": "m2",
+   "lane": "L0",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1148,
+   "end_line": 1148,
+   "operator": "semantic",
+   "verdict": "survived",
+   "tests": 0,
+   "start_s": 0.0,
+   "duration_s": 89.633,
+   "before": " 1146 |         self.stale = True\n 1147 | \n 1148 |     def set_visible(self, b):\n 1149 |         \"\"\"\n 1150 |         Set the artist's visibility.",
+   "after": " 1146 |         self.stale = True\n 1147 | \n 1148 |     def set_visible(self, b):\n 1149 |         if b:\n 1150 |             pass\n 1151 |         \"\"\"\n 1152 |         Set the artist's visibility."
+  },
+  {
+   "id": "m3",
+   "lane": "L0",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1148,
+   "end_line": 1148,
+   "operator": "semantic",
+   "verdict": "survived",
+   "tests": 0,
+   "start_s": 0.0,
+   "duration_s": 90.758,
+   "before": " 1146 |         self.stale = True\n 1147 | \n 1148 |     def set_visible(self, b):\n 1149 |         \"\"\"\n 1150 |         Set the artist's visibility.",
+   "after": " 1146 |         self.stale = True\n 1147 | \n 1148 |     def set_visible(self, b):\n 1149 |         _ = b\n 1150 |         \"\"\"\n 1151 |         Set the artist's visibility."
+  },
+  {
+   "id": "m4",
+   "lane": "L1",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1157,
+   "end_line": 1157,
+   "operator": "semantic",
+   "verdict": "killed",
+   "tests": 1,
+   "start_s": 0.0,
+   "duration_s": 1.312,
+   "before": " 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don",
+   "after": " 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible()\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don"
+  },
+  {
+   "id": "m5",
+   "lane": "L1",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1157,
+   "end_line": 1157,
+   "operator": "semantic",
+   "verdict": "survived",
+   "tests": 1,
+   "start_s": 0.0,
+   "duration_s": 1.328,
+   "before": " 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don",
+   "after": " 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible(True)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don"
+  },
+  {
+   "id": "m6",
+   "lane": "L1",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1157,
+   "end_line": 1157,
+   "operator": "semantic",
+   "verdict": "survived",
+   "tests": 1,
+   "start_s": 0.0,
+   "duration_s": 1.334,
+   "before": " 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don",
+   "after": " 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible(b and True)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don"
+  },
+  {
+   "id": "m7",
+   "lane": "L2",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1159,
+   "end_line": 1159,
+   "operator": "semantic",
+   "verdict": "survived",
+   "tests": 1,
+   "start_s": 0.0,
+   "duration_s": 1.28,
+   "before": " 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:",
+   "after": " 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and not self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:"
+  },
+  {
+   "id": "m8",
+   "lane": "L2",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1159,
+   "end_line": 1159,
+   "operator": "semantic",
+   "verdict": "killed",
+   "tests": 1,
+   "start_s": 0.0,
+   "duration_s": 1.406,
+   "before": " 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:",
+   "after": " 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b or self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:"
+  },
+  {
+   "id": "m9",
+   "lane": "L2",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1159,
+   "end_line": 1159,
+   "operator": "semantic",
+   "verdict": "survived",
+   "tests": 1,
+   "start_s": 0.0,
+   "duration_s": 1.306,
+   "before": " 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:",
+   "after": " 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:"
+  },
+  {
+   "id": "m10",
+   "lane": "L3",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1161,
+   "end_line": 1162,
+   "operator": "semantic",
+   "verdict": "survived",
+   "tests": 1,
+   "start_s": 0.0,
+   "duration_s": 1.337,
+   "before": " 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True\n 1164 | ",
+   "after": " 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible\n 1163 |         self.stale = True\n 1164 | "
+  },
+  {
+   "id": "m11",
+   "lane": "L3",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1161,
+   "end_line": 1162,
+   "operator": "semantic",
+   "verdict": "survived",
+   "tests": 1,
+   "start_s": 0.0,
+   "duration_s": 1.297,
+   "before": " 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True\n 1164 | ",
+   "after": " 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(True)\n 1163 |         self.stale = True\n 1164 | "
+  },
+  {
+   "id": "m12",
+   "lane": "L3",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1161,
+   "end_line": 1162,
+   "operator": "semantic",
+   "verdict": "survived",
+   "tests": 1,
+   "start_s": 0.0,
+   "duration_s": 1.402,
+   "before": " 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True\n 1164 | ",
+   "after": " 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             if artist.get_visible():\n 1163 |                 artist.set_visible(b)\n 1164 |         self.stale = True\n 1165 | "
+  },
+  {
+   "id": "m13",
+   "lane": "L3",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1161,
+   "end_line": 1162,
+   "operator": "semantic",
+   "verdict": "survived",
+   "tests": 1,
+   "start_s": 0.0,
+   "duration_s": 1.298,
+   "before": " 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True\n 1164 | ",
+   "after": " 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |             artist.set_visible(not b)\n 1164 |         self.stale = True\n 1165 | "
+  },
+  {
+   "id": "m14",
+   "lane": "L4",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1163,
+   "end_line": 1163,
+   "operator": "semantic",
+   "verdict": "survived",
+   "tests": 1,
+   "start_s": 0.0,
+   "duration_s": 1.386,
+   "before": " 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")",
+   "after": " 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = False\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")"
+  },
+  {
+   "id": "m15",
+   "lane": "L4",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1163,
+   "end_line": 1163,
+   "operator": "semantic",
+   "verdict": "survived",
+   "tests": 1,
+   "start_s": 0.0,
+   "duration_s": 1.293,
+   "before": " 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")",
+   "after": " 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = 1\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")"
+  },
+  {
+   "id": "m16",
+   "lane": "L4",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1163,
+   "end_line": 1163,
+   "operator": "semantic",
+   "verdict": "survived",
+   "tests": 1,
+   "start_s": 0.0,
+   "duration_s": 1.288,
+   "before": " 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")",
+   "after": " 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         # stale flag removed\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")"
+  },
+  {
+   "id": "m17",
+   "lane": "L4",
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "start_line": 1163,
+   "end_line": 1163,
+   "operator": "semantic",
+   "verdict": "survived",
+   "tests": 1,
+   "start_s": 0.0,
+   "duration_s": 1.312,
+   "before": " 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")",
+   "after": " 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = not self.stale\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")"
+  }
+ ],
+ "tier0": [
+  {
+   "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+   "line": 1162
+  }
+ ],
+ "ddmin": {
+  "undefended": [
+   {
+    "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+    "start_line": 3263,
+    "end_line": 3266
+   }
+  ],
+  "probes": 3
+ },
+ "triage": {
+  "headline": [
+   {
+    "id": "h0",
+    "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+    "start_line": 1159,
+    "end_line": 1159,
+    "operator": "semantic",
+    "rationale": "Inverts the second operand, so the expression evaluates to False when b is True, weakening the guard.",
+    "original": " 1153 |         ----------\n 1154 |         b : bool\n 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")",
+    "mutated": " 1153 |         ----------\n 1154 |         b : bool\n 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and not self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")",
+    "diff": "--- a/lib/mpl_toolkits/mplot3d/axes3d.py\n+++ b/lib/mpl_toolkits/mplot3d/axes3d.py\n         # Call the parent class's set_visible\n         super().set_visible(b)\n         # Also hide/show all the 3D-specific elements\n-        self._axis3don = b and self._axis3don\n+        self._axis3don = b and not self._axis3don\n         # Mark all contained artists as stale\n         for artist in self._children:\n             artist.set_visible(b)",
+    "tests": [
+     "lib/mpl_toolkits/tests/test_mplot3d.py::test_invisible_axes[png]"
+    ],
+    "label": "untested_invariant",
+    "category": "safety",
+    "confident": true,
+    "explanation": "The mutant flips the logic of self._axis3don assignment when b=True, changing the observable state of the 3D axis. The existing test only checks the invisible case (b=False), so this behavioral change is not caught by the test suite.",
+    "agreement": 3
+   }
+  ],
+  "worth_a_look": [
+   {
+    "id": "w0",
+    "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+    "start_line": 1157,
+    "end_line": 1157,
+    "operator": "semantic",
+    "rationale": "Hardcodes the argument to True, removing the variable dependency that the author might accidentally delete.",
+    "original": " 1151 | \n 1152 |         Parameters\n 1153 |         ----------\n 1154 |         b : bool\n 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True",
+    "mutated": " 1151 | \n 1152 |         Parameters\n 1153 |         ----------\n 1154 |         b : bool\n 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible(True)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True",
+    "diff": "--- a/lib/mpl_toolkits/mplot3d/axes3d.py\n+++ b/lib/mpl_toolkits/mplot3d/axes3d.py\n         b : bool\n         \"\"\"\n         # Call the parent class's set_visible\n-        super().set_visible(b)\n+        super().set_visible(True)\n         # Also hide/show all the 3D-specific elements\n         self._axis3don = b and self._axis3don\n         # Mark all contained artists as stale",
+    "tests": [
+     "lib/mpl_toolkits/tests/test_mplot3d.py::test_invisible_axes[png]"
+    ],
+    "label": "untested_invariant",
+    "category": "functional",
+    "confident": true,
+    "explanation": "The mutant always calls super().set_visible(True) ignoring the parameter b, so when b is False the visibility behavior differs from the original. This change is observable (affects axis rendering) but not caught by the existing test, which apparently only invokes the method with b=True.",
+    "agreement": 2
+   },
+   {
+    "id": "w1",
+    "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+    "start_line": 1161,
+    "end_line": 1162,
+    "operator": "semantic",
+    "rationale": "Removes the function call parentheses, causing an AttributeError if the result is assigned or used, weakening the guard against accidental deletion.",
+    "original": " 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")\n 1166 |     def grid(self, visible=True, **kwargs):\n 1167 |         \"\"\"\n 1168 |         Set / unset 3D grid.",
+    "mutated": " 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible\n 1163 |         self.stale = True\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")\n 1166 |     def grid(self, visible=True, **kwargs):\n 1167 |         \"\"\"\n 1168 |         Set / unset 3D grid.",
+    "diff": "--- a/lib/mpl_toolkits/mplot3d/axes3d.py\n+++ b/lib/mpl_toolkits/mplot3d/axes3d.py\n         self._axis3don = b and self._axis3don\n         # Mark all contained artists as stale\n         for artist in self._children:\n-            artist.set_visible(b)\n+            artist.set_visible\n         self.stale = True\n \n     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")",
+    "tests": [
+     "lib/mpl_toolkits/tests/test_mplot3d.py::test_invisible_axes[png]"
+    ],
+    "label": "untested_invariant",
+    "category": "functional",
+    "confident": true,
+    "explanation": "The mutant omits the call to artist.set_visible(b), so child artists' visibility is not updated. The test suite runs this code but does not assert on child visibility, so the behavioral change is not caught.",
+    "agreement": 2
+   },
+   {
+    "id": "w2",
+    "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+    "start_line": 1148,
+    "end_line": 1148,
+    "operator": "semantic",
+    "rationale": "Removes the function body, potentially causing the visibility setter to become a no-op if the author accidentally deletes the method definition entirely.",
+    "original": " 1142 |         ----------\n 1143 |         b : bool\n 1144 |         \"\"\"\n 1145 |         self._frameon = bool(b)\n 1146 |         self.stale = True\n 1147 | \n 1148 |     def set_visible(self, b):\n 1149 |         \"\"\"\n 1150 |         Set the artist's visibility.\n 1151 | \n 1152 |         Parameters\n 1153 |         ----------\n 1154 |         b : bool",
+    "mutated": " 1142 |         ----------\n 1143 |         b : bool\n 1144 |         \"\"\"\n 1145 |         self._frameon = bool(b)\n 1146 |         self.stale = True\n 1147 | \n 1148 |     def set_visible(self, b):\n 1149 |         \"\"\"docstring omitted for brevity\"\"\"\n 1150 |         pass\n 1151 |         \"\"\"\n 1152 |         Set the artist's visibility.\n 1153 | \n 1154 |         Parameters\n 1155 |         ----------\n 1156 |         b : bool",
+    "diff": "--- a/lib/mpl_toolkits/mplot3d/axes3d.py\n+++ b/lib/mpl_toolkits/mplot3d/axes3d.py\n         self.stale = True\n \n     def set_visible(self, b):\n+        \"\"\"docstring omitted for brevity\"\"\"\n+        pass\n         \"\"\"\n         Set the artist's visibility.\n ",
+    "tests": [],
+    "label": "untested_invariant",
+    "category": "functional",
+    "confident": true,
+    "explanation": "The mutation replaces the set_visible method body with a pass, making the visibility setter a no\u2011op. If the method is called, the artist's visibility will not change, which is an observable behavior not exercised by the existing test suite.",
+    "agreement": null
+   },
+   {
+    "id": "w3",
+    "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+    "start_line": 1148,
+    "end_line": 1148,
+    "operator": "semantic",
+    "rationale": "Adds a conditional guard that does nothing, weakening the original unconditional logic and potentially lulling a reviewer into thinking the method is safe to modify.",
+    "original": " 1142 |         ----------\n 1143 |         b : bool\n 1144 |         \"\"\"\n 1145 |         self._frameon = bool(b)\n 1146 |         self.stale = True\n 1147 | \n 1148 |     def set_visible(self, b):\n 1149 |         \"\"\"\n 1150 |         Set the artist's visibility.\n 1151 | \n 1152 |         Parameters\n 1153 |         ----------\n 1154 |         b : bool",
+    "mutated": " 1142 |         ----------\n 1143 |         b : bool\n 1144 |         \"\"\"\n 1145 |         self._frameon = bool(b)\n 1146 |         self.stale = True\n 1147 | \n 1148 |     def set_visible(self, b):\n 1149 |         if b:\n 1150 |             pass\n 1151 |         \"\"\"\n 1152 |         Set the artist's visibility.\n 1153 | \n 1154 |         Parameters\n 1155 |         ----------\n 1156 |         b : bool",
+    "diff": "--- a/lib/mpl_toolkits/mplot3d/axes3d.py\n+++ b/lib/mpl_toolkits/mplot3d/axes3d.py\n         self.stale = True\n \n     def set_visible(self, b):\n+        if b:\n+            pass\n         \"\"\"\n         Set the artist's visibility.\n ",
+    "tests": [],
+    "label": "untested_invariant",
+    "category": "functional",
+    "confident": true,
+    "explanation": "The inserted `if b: pass` statement makes the function's docstring no longer the first statement, so __doc__ becomes None. This change is observable (e.g., help() or Sphinx) but the test suite does not check the docstring, hence it is an untested invariant.",
+    "agreement": null
+   },
+   {
+    "id": "w4",
+    "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+    "start_line": 1148,
+    "end_line": 1148,
+    "operator": "semantic",
+    "rationale": "Replaces the method body with a simple assignment that ignores the argument, weakening the protection by making the function appear to accept input without acting on it.",
+    "original": " 1142 |         ----------\n 1143 |         b : bool\n 1144 |         \"\"\"\n 1145 |         self._frameon = bool(b)\n 1146 |         self.stale = True\n 1147 | \n 1148 |     def set_visible(self, b):\n 1149 |         \"\"\"\n 1150 |         Set the artist's visibility.\n 1151 | \n 1152 |         Parameters\n 1153 |         ----------\n 1154 |         b : bool",
+    "mutated": " 1142 |         ----------\n 1143 |         b : bool\n 1144 |         \"\"\"\n 1145 |         self._frameon = bool(b)\n 1146 |         self.stale = True\n 1147 | \n 1148 |     def set_visible(self, b):\n 1149 |         _ = b\n 1150 |         \"\"\"\n 1151 |         Set the artist's visibility.\n 1152 | \n 1153 |         Parameters\n 1154 |         ----------\n 1155 |         b : bool",
+    "diff": "--- a/lib/mpl_toolkits/mplot3d/axes3d.py\n+++ b/lib/mpl_toolkits/mplot3d/axes3d.py\n         self.stale = True\n \n     def set_visible(self, b):\n+        _ = b\n         \"\"\"\n         Set the artist's visibility.\n ",
+    "tests": [],
+    "label": "untested_invariant",
+    "category": "functional",
+    "confident": true,
+    "explanation": "The mutant makes set_visible ignore its argument, so the function no longer affects the artist's visibility. Since the test suite passes, the change in observable behavior is not exercised by any test.",
+    "agreement": null
+   },
+   {
+    "id": "w5",
+    "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+    "start_line": 1159,
+    "end_line": 1159,
+    "operator": "semantic",
+    "rationale": "Removes the reliance on the previous _axis3don value entirely, making the assignment unconditional on b.",
+    "original": " 1153 |         ----------\n 1154 |         b : bool\n 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")",
+    "mutated": " 1153 |         ----------\n 1154 |         b : bool\n 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")",
+    "diff": "--- a/lib/mpl_toolkits/mplot3d/axes3d.py\n+++ b/lib/mpl_toolkits/mplot3d/axes3d.py\n         # Call the parent class's set_visible\n         super().set_visible(b)\n         # Also hide/show all the 3D-specific elements\n-        self._axis3don = b and self._axis3don\n+        self._axis3don = b\n         # Mark all contained artists as stale\n         for artist in self._children:\n             artist.set_visible(b)",
+    "tests": [
+     "lib/mpl_toolkits/tests/test_mplot3d.py::test_invisible_axes[png]"
+    ],
+    "label": "untested_invariant",
+    "category": "functional",
+    "confident": true,
+    "explanation": "The mutant forces _axis3don to equal b, whereas the original preserves the previous _axis3don when b=True. This can change internal state and later rendering, but the existing test only checks invisibility and does not exercise the case where visibility is turned back on.",
+    "agreement": null
+   },
+   {
+    "id": "w6",
+    "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+    "start_line": 1161,
+    "end_line": 1162,
+    "operator": "semantic",
+    "rationale": "Hardcodes the visibility argument to True, removing the dependency on the variable 'b' which might be the intended control flow.",
+    "original": " 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")\n 1166 |     def grid(self, visible=True, **kwargs):\n 1167 |         \"\"\"\n 1168 |         Set / unset 3D grid.",
+    "mutated": " 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(True)\n 1163 |         self.stale = True\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")\n 1166 |     def grid(self, visible=True, **kwargs):\n 1167 |         \"\"\"\n 1168 |         Set / unset 3D grid.",
+    "diff": "--- a/lib/mpl_toolkits/mplot3d/axes3d.py\n+++ b/lib/mpl_toolkits/mplot3d/axes3d.py\n         self._axis3don = b and self._axis3don\n         # Mark all contained artists as stale\n         for artist in self._children:\n-            artist.set_visible(b)\n+            artist.set_visible(True)\n         self.stale = True\n \n     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")",
+    "tests": [
+     "lib/mpl_toolkits/tests/test_mplot3d.py::test_invisible_axes[png]"
+    ],
+    "label": "untested_invariant",
+    "category": "functional",
+    "confident": false,
+    "explanation": "The mutant ignores the visibility flag\u202fb and always sets child artists to visible, which can change observable behavior when b is False. The existing test does not check child visibility under that condition, so the change passes undetected.",
+    "agreement": null
+   },
+   {
+    "id": "w7",
+    "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+    "start_line": 1163,
+    "end_line": 1163,
+    "operator": "semantic",
+    "rationale": "Weakening the guard clause by flipping a boolean state flag to disabled state, which an author might accidentally remove thinking it is harmless.",
+    "original": " 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")\n 1166 |     def grid(self, visible=True, **kwargs):\n 1167 |         \"\"\"\n 1168 |         Set / unset 3D grid.\n 1169 | ",
+    "mutated": " 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = False\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")\n 1166 |     def grid(self, visible=True, **kwargs):\n 1167 |         \"\"\"\n 1168 |         Set / unset 3D grid.\n 1169 | ",
+    "diff": "--- a/lib/mpl_toolkits/mplot3d/axes3d.py\n+++ b/lib/mpl_toolkits/mplot3d/axes3d.py\n         # Mark all contained artists as stale\n         for artist in self._children:\n             artist.set_visible(b)\n-        self.stale = True\n+        self.stale = False\n \n     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")\n     def grid(self, visible=True, **kwargs):",
+    "tests": [
+     "lib/mpl_toolkits/tests/test_mplot3d.py::test_invisible_axes[png]"
+    ],
+    "label": "untested_invariant",
+    "category": "functional",
+    "confident": true,
+    "explanation": "The mutant changes the stale flag from True to False after setting visibility, which alters when a redraw is triggered. The existing test does not verify the stale flag or resulting draw behavior, so this change is not caught by the test suite.",
+    "agreement": null
+   },
+   {
+    "id": "w8",
+    "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+    "start_line": 1163,
+    "end_line": 1163,
+    "operator": "semantic",
+    "rationale": "Removing the assignment entirely, simulating an accidental deletion of the protection during a cleanup pass.",
+    "original": " 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")\n 1166 |     def grid(self, visible=True, **kwargs):\n 1167 |         \"\"\"\n 1168 |         Set / unset 3D grid.\n 1169 | ",
+    "mutated": " 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         # stale flag removed\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")\n 1166 |     def grid(self, visible=True, **kwargs):\n 1167 |         \"\"\"\n 1168 |         Set / unset 3D grid.\n 1169 | ",
+    "diff": "--- a/lib/mpl_toolkits/mplot3d/axes3d.py\n+++ b/lib/mpl_toolkits/mplot3d/axes3d.py\n         # Mark all contained artists as stale\n         for artist in self._children:\n             artist.set_visible(b)\n-        self.stale = True\n+        # stale flag removed\n \n     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")\n     def grid(self, visible=True, **kwargs):",
+    "tests": [
+     "lib/mpl_toolkits/tests/test_mplot3d.py::test_invisible_axes[png]"
+    ],
+    "label": "untested_invariant",
+    "category": "functional",
+    "confident": false,
+    "explanation": "Removing the assignment to self.stale may prevent the axes from being marked as needing a redraw after visibility changes, which could affect rendering. The existing test does not catch this difference, so the change alters observable behavior that is not currently tested.",
+    "agreement": null
+   },
+   {
+    "id": "w9",
+    "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+    "start_line": 1163,
+    "end_line": 1163,
+    "operator": "semantic",
+    "rationale": "Inverting the boolean logic, which changes the guard behavior and could be mistakenly removed if the author misunderstands the intent.",
+    "original": " 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")\n 1166 |     def grid(self, visible=True, **kwargs):\n 1167 |         \"\"\"\n 1168 |         Set / unset 3D grid.\n 1169 | ",
+    "mutated": " 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = not self.stale\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")\n 1166 |     def grid(self, visible=True, **kwargs):\n 1167 |         \"\"\"\n 1168 |         Set / unset 3D grid.\n 1169 | ",
+    "diff": "--- a/lib/mpl_toolkits/mplot3d/axes3d.py\n+++ b/lib/mpl_toolkits/mplot3d/axes3d.py\n         # Mark all contained artists as stale\n         for artist in self._children:\n             artist.set_visible(b)\n-        self.stale = True\n+        self.stale = not self.stale\n \n     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")\n     def grid(self, visible=True, **kwargs):",
+    "tests": [
+     "lib/mpl_toolkits/tests/test_mplot3d.py::test_invisible_axes[png]"
+    ],
+    "label": "untested_invariant",
+    "category": "functional",
+    "confident": true,
+    "explanation": "The mutant toggles self.stale instead of always setting it to True, changing the program's internal state that can affect later redraw decisions. The existing test does not check the stale flag, so this behavioral change is not caught.",
+    "agreement": null
+   }
+  ],
+  "dismissed": [
+   {
+    "id": "d0",
+    "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+    "start_line": 1157,
+    "end_line": 1157,
+    "operator": "semantic",
+    "rationale": "Adds a redundant logical AND that still evaluates to b but adds an extra line an author might simplify away.",
+    "original": " 1151 | \n 1152 |         Parameters\n 1153 |         ----------\n 1154 |         b : bool\n 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True",
+    "mutated": " 1151 | \n 1152 |         Parameters\n 1153 |         ----------\n 1154 |         b : bool\n 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible(b and True)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True",
+    "diff": "--- a/lib/mpl_toolkits/mplot3d/axes3d.py\n+++ b/lib/mpl_toolkits/mplot3d/axes3d.py\n         b : bool\n         \"\"\"\n         # Call the parent class's set_visible\n-        super().set_visible(b)\n+        super().set_visible(b and True)\n         # Also hide/show all the 3D-specific elements\n         self._axis3don = b and self._axis3don\n         # Mark all contained artists as stale",
+    "tests": [
+     "lib/mpl_toolkits/tests/test_mplot3d.py::test_invisible_axes[png]"
+    ],
+    "label": "equivalent",
+    "category": null,
+    "confident": true,
+    "explanation": "The mutant replaces `b` with `b and True`, which is logically identical for any boolean value of b. Since the parameter is intended to be a bool and all existing calls pass booleans, the mutant's behavior matches the original for every reachable input.",
+    "agreement": null
+   },
+   {
+    "id": "d1",
+    "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+    "start_line": 1161,
+    "end_line": 1162,
+    "operator": "semantic",
+    "rationale": "Adds a redundant guard clause checking the current visibility state, making the code more verbose and less likely to be deleted accidentally.",
+    "original": " 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")\n 1166 |     def grid(self, visible=True, **kwargs):\n 1167 |         \"\"\"\n 1168 |         Set / unset 3D grid.",
+    "mutated": " 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             if artist.get_visible():\n 1163 |                 artist.set_visible(b)\n 1164 |         self.stale = True\n 1165 | \n 1166 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")\n 1167 |     def grid(self, visible=True, **kwargs):\n 1168 |         \"\"\"\n 1169 |         Set / unset 3D grid.",
+    "diff": "--- a/lib/mpl_toolkits/mplot3d/axes3d.py\n+++ b/lib/mpl_toolkits/mplot3d/axes3d.py\n         self._axis3don = b and self._axis3don\n         # Mark all contained artists as stale\n         for artist in self._children:\n-            artist.set_visible(b)\n+            if artist.get_visible():\n+                artist.set_visible(b)\n         self.stale = True\n \n     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")",
+    "tests": [
+     "lib/mpl_toolkits/tests/test_mplot3d.py::test_invisible_axes[png]"
+    ],
+    "label": "equivalent",
+    "category": null,
+    "confident": true,
+    "explanation": "The added guard only skips calling set_visible when the artist already has the target visibility; this does not change any observable state because setting visibility to the same value has no side\u2011effects, and self.stale is set unconditionally afterward.",
+    "agreement": null
+   },
+   {
+    "id": "d2",
+    "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+    "start_line": 1161,
+    "end_line": 1162,
+    "operator": "semantic",
+    "rationale": "Duplicates the set_visible call with inverted argument, obscuring the intent and making a single accidental deletion less likely to break functionality.",
+    "original": " 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")\n 1166 |     def grid(self, visible=True, **kwargs):\n 1167 |         \"\"\"\n 1168 |         Set / unset 3D grid.",
+    "mutated": " 1155 |         \"\"\"\n 1156 |         # Call the parent class's set_visible\n 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |             artist.set_visible(not b)\n 1164 |         self.stale = True\n 1165 | \n 1166 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")\n 1167 |     def grid(self, visible=True, **kwargs):\n 1168 |         \"\"\"\n 1169 |         Set / unset 3D grid.",
+    "diff": "--- a/lib/mpl_toolkits/mplot3d/axes3d.py\n+++ b/lib/mpl_toolkits/mplot3d/axes3d.py\n         # Mark all contained artists as stale\n         for artist in self._children:\n             artist.set_visible(b)\n+            artist.set_visible(not b)\n         self.stale = True\n \n     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")",
+    "tests": [
+     "lib/mpl_toolkits/tests/test_mplot3d.py::test_invisible_axes[png]"
+    ],
+    "label": "dead_code",
+    "category": null,
+    "confident": false,
+    "explanation": "The mutant inserts an extra set_visible call that likely has no observable effect when self._children is empty in the tested scenario, rendering the change dead code.",
+    "agreement": null
+   },
+   {
+    "id": "d3",
+    "file": "lib/mpl_toolkits/mplot3d/axes3d.py",
+    "start_line": 1163,
+    "end_line": 1163,
+    "operator": "semantic",
+    "rationale": "Replacing the boolean assignment with an integer, which changes the semantics and might be deleted during a refactor assuming it is a simple flag.",
+    "original": " 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = True\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")\n 1166 |     def grid(self, visible=True, **kwargs):\n 1167 |         \"\"\"\n 1168 |         Set / unset 3D grid.\n 1169 | ",
+    "mutated": " 1157 |         super().set_visible(b)\n 1158 |         # Also hide/show all the 3D-specific elements\n 1159 |         self._axis3don = b and self._axis3don\n 1160 |         # Mark all contained artists as stale\n 1161 |         for artist in self._children:\n 1162 |             artist.set_visible(b)\n 1163 |         self.stale = 1\n 1164 | \n 1165 |     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")\n 1166 |     def grid(self, visible=True, **kwargs):\n 1167 |         \"\"\"\n 1168 |         Set / unset 3D grid.\n 1169 | ",
+    "diff": "--- a/lib/mpl_toolkits/mplot3d/axes3d.py\n+++ b/lib/mpl_toolkits/mplot3d/axes3d.py\n         # Mark all contained artists as stale\n         for artist in self._children:\n             artist.set_visible(b)\n-        self.stale = True\n+        self.stale = 1\n \n     @_api.rename_parameter(\"3.5\", \"b\", \"visible\")\n     def grid(self, visible=True, **kwargs):",
+    "tests": [
+     "lib/mpl_toolkits/tests/test_mplot3d.py::test_invisible_axes[png]"
+    ],
+    "label": "equivalent",
+    "category": null,
+    "confident": true,
+    "explanation": "The mutant changes self.stale from the boolean True to the integer 1, but the attribute is used only as a truthy flag (e.g., in conditional checks). Both values evaluate to True, so the program's observable behavior remains unchanged for all reachable inputs.",
+    "agreement": null
+   }
+  ],
+  "model_calls": 21
+ },
+ "regression": {
+  "finding_id": "h0",
+  "path": "lib/mpl_toolkits/tests/test_chesterton_regression.py",
+  "source": "import pytest\nfrom matplotlib.testing.decorators import check_figures_equal\n\n\n@check_figures_equal(extensions=[\"png\"])\ndef test_axis3don_visibility_toggle(fig_test, fig_ref):\n    # Reference figure: 3D axes created and set invisible\n    ax_ref = fig_ref.subplots(subplot_kw=dict(projection='3d'))\n    ax_ref.set_visible(False)\n\n    # Test figure: 3D axes toggled invisible then visible\n    ax_test = fig_test.subplots(subplot_kw=dict(projection='3d'))\n    ax_test.set_visible(False)\n    ax_test.set_visible(True)\n",
+  "status": "verified",
+  "detail": "passes on the pull request, fails on the mutant",
+  "patch_tail": ".                                                                        [100%]\n1 passed in 0.67s",
+  "mutant_tail": "    \n        file_name = \"\".join(c for c in request.node.name\n                            if c in ALLOWED_CHARS)\n        try:\n            fig_test = plt.figure(\"test\")\n            fig_ref = plt.figure(\"reference\")\n            with _collect_new_figures() as figs:\n                func(*args, fig_test=fig_test, fig_ref=fig_ref, **kwargs)\n            if figs:\n                raise RuntimeError('Number of open figures changed during '\n                                   'test. Make sure you are plotting to '\n                                   'fig_test or fig_ref, or if this is '\n                                   'deliberate explicitly close the '\n                                   'new figure(s) inside the test.')\n            test_image_path = result_dir / (file_name + \".\" + ext)\n            ref_image_path = result_dir / (file_name + \"-expected.\" + ext)\n            fig_test.savefig(test_image_path)\n            fig_ref.savefig(ref_image_path)\n>           _raise_on_image_difference(\n                ref_image_path, test_image_path, tol=tol\n            )\nE           matplotlib.testing.exceptions.ImageComparisonFailure: images not close (RMS 17.513):\nE           \tresult_images/test_chesterton_regression/test_axis3don_visibility_toggle[png].png\nE           \tresult_images/test_chesterton_regression/test_axis3don_visibility_toggle[png]-expected.png\nE           \tresult_images/test_chesterton_regression/test_axis3don_visibility_toggle[png]-failed-diff.png\n\nlib/matplotlib/testing/decorators.py:478: ImageComparisonFailure\n=========================== short test summary info ============================\nFAILED lib/mpl_toolkits/tests/test_chesterton_regression.py::test_axis3don_visibility_toggle[png]\n1 failed in 0.80s",
+  "attempts": 1,
+  "note": null,
+  "verified": true,
+  "gold": "fails_on_gold"
+ },
+ "counters": {
+  "sandbox_ops": 23,
+  "lightning_calls": 5,
+  "super_calls": 21,
+  "ultra_calls": 1,
+  "run_wall_s": 175.364
+ },
+ "timeline": {
+  "generate_s": 16.0,
+  "mutants_end_s": 91.163,
+  "ddmin_s": 16.0,
+  "triage_s": 16.0,
+  "regression_s": 16.0,
+  "total_s": 155.163
+ }
+}

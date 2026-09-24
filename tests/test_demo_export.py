@@ -146,3 +146,41 @@ async def test_the_example_bundle_matches_the_golden_file(demo_seed):
         GOLDEN.write_text(json.dumps(bundle, indent=2) + "\n", encoding="utf-8", newline="\n")
 
     assert bundle == json.loads(GOLDEN.read_text(encoding="utf-8"))
+
+
+import importlib.util  # noqa: E402
+
+_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "export_demo.py"
+_spec = importlib.util.spec_from_file_location("export_demo", _SCRIPT)
+export_demo = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(export_demo)
+
+
+def test_a_story_whose_inputs_are_missing_is_skipped_not_faked(tmp_path, demo_seed):
+    (tmp_path / "seed.json").write_text(headed(demo_seed).to_json(), encoding="utf-8")
+    (tmp_path / "run.json").write_text(json.dumps(run_report()), encoding="utf-8")
+    review = {"triage": {"headline": [], "worth_a_look": [], "dismissed": [], "model_calls": 0},
+              "regression": None, "ops_used": 0}
+    (tmp_path / "review.json").write_text(json.dumps(review), encoding="utf-8")
+    stories = [
+        {"id": "present", "tab": "A", "title": "t", "utboost": "wrong", "seed": "seed.json",
+         "run": "run.json", "review": "review.json", "gold": None, "submission": "x"},
+        {"id": "absent", "tab": "B", "title": "t", "utboost": "correct", "seed": "nope.json",
+         "run": "nope.json", "review": "nope.json", "gold": None, "submission": "y"},
+    ]
+    out = tmp_path / "out"
+
+    ids = export_demo.export(tmp_path, out, "c0ffee", stories=stories)
+
+    assert ids == ["present"]
+    assert json.loads((out / "index.json").read_text(encoding="utf-8")) == {
+        "stories": [{"id": "present", "tab": "A"}]}
+    assert json.loads((out / "present.json").read_text(encoding="utf-8"))["meta"]["chesterton_commit"] == "c0ffee"
+    assert not (out / "absent.json").exists()
+
+
+def test_the_submission_is_read_from_the_screening(tmp_path):
+    screen = {"patches": [{"patch": "abc.diff", "submissions": ["verified/2024_agent"], "verdict": "WRONG"}]}
+    (tmp_path / "screen.json").write_text(json.dumps(screen), encoding="utf-8")
+
+    assert export_demo.submission_for(tmp_path / "screen.json", "abc") == "verified/2024_agent"
