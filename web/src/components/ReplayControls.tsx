@@ -1,7 +1,7 @@
 import { FastForward, Pause, Play } from "lucide-react";
 import { useState } from "react";
 import type { Bundle } from "../bundle";
-import type { ReplayState } from "../engine";
+import { SPEEDS, type ReplayState } from "../engine";
 import type { useReplay } from "../useReplay";
 
 export function statusLine(state: ReplayState, bundle: Bundle): string {
@@ -57,7 +57,7 @@ export function ReplayControls({ clock, total, state, bundle }: Props) {
         speed{" "}
         <select value={clock.speed} onChange={(e) => clock.setSpeed(Number(e.target.value))}
           className="rounded border border-border bg-muted px-1 tabular">
-          {[1, 2, 4, 8, 16, 32].map((s) => <option key={s} value={s}>×{s}</option>)}
+          {SPEEDS.map((s) => <option key={s} value={s}>×{s}</option>)}
         </select>
       </label>
       <p role="status" aria-atomic="true" className="text-[13px] text-muted-foreground tabular">{announced}</p>

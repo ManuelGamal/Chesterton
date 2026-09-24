@@ -27,8 +27,17 @@ export interface ReplayState {
 
 export const TARGET_SECONDS = 15;
 
+/** The replay speeds the menu offers. defaultSpeed only ever returns one of these. */
+export const SPEEDS = [1, 2, 4, 8, 16, 32] as const;
+
+/** The offered speed nearest to fitting the replay into TARGET_SECONDS (lower on a tie). */
 export function defaultSpeed(total: number): number {
-  return Math.max(1, Math.round(total / TARGET_SECONDS));
+  const ideal = total / TARGET_SECONDS;
+  let best: number = SPEEDS[0];
+  for (const s of SPEEDS) {
+    if (Math.abs(s - ideal) < Math.abs(best - ideal)) best = s;
+  }
+  return best;
 }
 
 export function lineKey(file: string, line: number): string {

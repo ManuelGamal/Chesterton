@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { Bundle } from "./bundle";
-import { defaultSpeed, lineKey, stateAt } from "./engine";
+import { defaultSpeed, lineKey, SPEEDS, stateAt } from "./engine";
 
 const golden = JSON.parse(
   readFileSync(new URL("../../tests/fixtures/demo_example_bundle.json", import.meta.url), "utf8"),
@@ -52,5 +52,18 @@ describe("defaultSpeed", () => {
   it("fits the replay to about 15 seconds", () => {
     expect(defaultSpeed(120)).toBe(8);
     expect(defaultSpeed(5)).toBe(1);
+  });
+
+  it("snaps to a speed the menu offers, so the menu shows what plays", () => {
+    expect(defaultSpeed(154.5)).toBe(8); // 10.3x → 8
+    expect(defaultSpeed(10_000)).toBe(32);
+    for (const total of [5, 40, 90, 154.5, 200, 400, 10_000]) {
+      expect(SPEEDS).toContain(defaultSpeed(total));
+    }
+  });
+
+  it("picks the lower speed on a tie", () => {
+    expect(defaultSpeed(45)).toBe(2); // 3x: as near 2 as 4
+    expect(defaultSpeed(180)).toBe(8); // 12x: as near 8 as 16
   });
 });
