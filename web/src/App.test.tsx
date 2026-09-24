@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import App from "./App";
 import type { Bundle } from "./bundle";
 import { ReplayControls, statusLine } from "./components/ReplayControls";
 import { stateAt, type ReplayState } from "./engine";
@@ -76,5 +77,34 @@ describe("ReplayControls' status announcement", () => {
       <ReplayControls clock={clock} total={total} state={makeState({ phase: "done", finished: n, survived: 3 })} bundle={golden} />,
     );
     expect(screen.getByRole("status")).toHaveTextContent(`${n} of ${n} mutants finished`);
+  });
+});
+
+describe("App's load errors", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("shows a message instead of loading forever when the story index fails to load", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}) })),
+    );
+    render(<App />);
+    await screen.findByText("Could not load the stories.");
+  });
+
+  it("shows a message instead of loading forever when a story fails to load", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("index.json")) {
+          return { ok: true, json: async () => ({ stories: [{ id: "hero", tab: "Hero" }] }) };
+        }
+        return { ok: false, status: 500, json: async () => ({}) };
+      }),
+    );
+    render(<App />);
+    await screen.findByText("Could not load this story.");
   });
 });

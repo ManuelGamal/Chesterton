@@ -1,6 +1,6 @@
 import * as Tabs from "@radix-ui/react-tabs";
 import { Info } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { assertBundle, type Bundle, type DiffLine, type Finding, type StoryIndex } from "./bundle";
 import { AboutDialog } from "./components/AboutDialog";
 import { DiffPane } from "./components/DiffPane";
@@ -111,24 +111,31 @@ function StoryView({ bundle, lines }: { bundle: Bundle; lines: DiffLine[] }) {
     setFocus(f);
   }, [pause]);
 
+  // `clock` (from useReplay) is a fresh object every render, including every animation
+  // frame during autoplay. Keep the latest handler in a ref and register the actual
+  // window listener once, so autoplay doesn't remove/re-add it up to 60 times a second.
+  const onKeyRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  onKeyRef.current = (e: KeyboardEvent) => {
+    if (document.querySelector("dialog[open]")) return;
+    const tag = (e.target as HTMLElement).tagName;
+    if (["INPUT", "SELECT", "BUTTON", "TEXTAREA"].includes(tag)) return;
+    if (e.key === " ") {
+      e.preventDefault();
+      if (clock.playing) clock.pause();
+      else clock.play();
+    }
+    if ((e.key === "ArrowRight" || e.key === "ArrowLeft") && state.showTriage && headline.length) {
+      const i = focus ? headline.findIndex((f) => f.id === focus.id) : -1;
+      const next = e.key === "ArrowRight" ? Math.min(i + 1, headline.length - 1) : Math.max(i - 1, 0);
+      pick(headline[next]);
+    }
+  };
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName;
-      if (["INPUT", "SELECT", "BUTTON", "TEXTAREA"].includes(tag)) return;
-      if (e.key === " ") {
-        e.preventDefault();
-        if (clock.playing) clock.pause();
-        else clock.play();
-      }
-      if ((e.key === "ArrowRight" || e.key === "ArrowLeft") && state.showTriage && headline.length) {
-        const i = focus ? headline.findIndex((f) => f.id === focus.id) : -1;
-        const next = e.key === "ArrowRight" ? Math.min(i + 1, headline.length - 1) : Math.max(i - 1, 0);
-        pick(headline[next]);
-      }
-    };
+    const onKey = (e: KeyboardEvent) => onKeyRef.current(e);
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [clock, state.showTriage, headline, focus, pick]);
+  }, []);
 
   const c = bundle.counters;
   return (

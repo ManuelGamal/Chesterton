@@ -21,6 +21,7 @@
   --verdict-error: #94A3B8;
   --diff-add: rgba(46, 160, 67, 0.10);
   --diff-del: rgba(248, 81, 73, 0.10);
+  --scrim: rgb(0 0 0 / 0.6);
 }
 
 @theme inline {
@@ -32,11 +33,12 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-scrim: var(--scrim);
   --font-sans: "IBM Plex Sans", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
 html, body, #root { height: 100%; }
-body { background: var(--background); color: var(--foreground); font-family: var(--font-sans); margin: 0; }
+body { background: var(--background); color: var(--foreground); font-family: var(--font-sans); margin: 0; font-variant-numeric: tabular-nums; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tabular { font-variant-numeric: tabular-nums; }

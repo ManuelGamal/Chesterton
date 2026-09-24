@@ -11,7 +11,7 @@ export function AboutDialog({ open, onClose }: { open: boolean; onClose: () => v
   }, [open]);
   return (
     <dialog ref={ref} onClose={onClose}
-      className="m-auto max-w-2xl rounded-lg border border-border bg-card p-6 text-foreground backdrop:bg-black/60">
+      className="m-auto max-w-2xl rounded-lg border border-border bg-card p-6 text-foreground backdrop:bg-scrim">
       <button type="button" onClick={onClose} aria-label="Close" className="float-right cursor-pointer"><X size={18} /></button>
       <h2 className="text-lg font-semibold">How this runs on Nebius</h2>
       <ul className="mt-3 list-disc space-y-2 pl-5 text-[15px]">
