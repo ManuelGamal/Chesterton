@@ -14,13 +14,12 @@ Licensed under the MIT License.
 
 ## Demo
 
-Two of three recorded runs are live, plus one live call. The third, the
-correct fix, is added once its review run is recorded. The URL is added
-after the first deploy.
+A replay of three recorded runs, plus one live call. The URL is added after
+the first deploy.
 
 1. **Wrong patch, caught:** an agent patch that passed SWE-bench and UTBoost proved wrong. Chesterton names the untested behaviour and writes a regression test, verified by execution, that also holds on the correct fix.
 2. **The honest limit:** a verified test that encodes the agent's own bug.
-3. **The correct fix:** the reference patch, well defended. (coming)
+3. **The correct fix:** the reference patch, well defended: 5 of its 6 mutants are killed, and triage judges the one survivor not worth a headline.
 
 ## How this runs on Nebius
 

@@ -7,6 +7,10 @@
   {
    "id": "limit",
    "tab": "The honest limit"
+  },
+  {
+   "id": "gold",
+   "tab": "The correct fix"
   }
  ]
 }

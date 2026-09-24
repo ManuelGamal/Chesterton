@@ -44,7 +44,8 @@ STORIES = [
      "submission": (SCREEN, "92beef201cfd")},
     {"id": "gold", "tab": "The correct fix", "utboost": "correct",
      "title": "The reference fix: well defended, and a quiet review.",
-     "system": "Reference fix (SWE-bench gold)",
+     # SWE-bench's reference patch is the fix matplotlib's developers merged.
+     "system": "matplotlib's developers (the merged fix)",
      "seed": "seeds/matplotlib-23314.json",
      "run": "runs/matplotlib-23314.json",
      "review": "review-gold/matplotlib-23314.json",

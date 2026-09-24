@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -188,6 +188,17 @@ describe("the story view", () => {
     expect(screen.getByText("pay.py:2–3 · dead code")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "pay.py:2–3 · untested invariant · functional" }));
     expect(focused()).toHaveTextContent("WORTH A LOOK");
+  });
+
+  it("opens worth-a-look only when there is no headline finding", async () => {
+    serve(STORY);
+    await skipToResults();
+    expect(screen.getByText("Worth a look (1)").closest("details")).not.toHaveAttribute("open");
+    cleanup();
+    serve({ ...STORY, triage: { ...STORY.triage, headline: [] } });
+    await skipToResults();
+    expect(screen.getByText("Worth a look (1)").closest("details")).toHaveAttribute("open");
+    expect(screen.getByText("Dismissed (1)").closest("details")).not.toHaveAttribute("open");
   });
 
   it("says who wrote the patch, and that the counters are run totals", async () => {

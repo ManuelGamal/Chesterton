@@ -210,7 +210,8 @@ function TriageLists({ bundle, focus, onPick }: { bundle: Bundle; focus: Finding
   const summary = "cursor-pointer py-1 text-muted-foreground";
   return (
     <div className="px-3 pb-1 text-[14px]">
-      <details>
+      {/* With no headline, worth-a-look is the review's whole answer, so it starts open. */}
+      <details open={bundle.triage.headline.length === 0 && worth.length > 0}>
         <summary className={summary}>{`Worth a look (${worth.length})`}</summary>
         <ul className="mb-2 ml-4 space-y-0.5">
           {worth.map((f) => (
