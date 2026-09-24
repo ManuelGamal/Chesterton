@@ -184,3 +184,11 @@ def test_the_submission_is_read_from_the_screening(tmp_path):
     (tmp_path / "screen.json").write_text(json.dumps(screen), encoding="utf-8")
 
     assert export_demo.submission_for(tmp_path / "screen.json", "abc") == "verified/2024_agent"
+
+
+def test_a_gold_stem_missing_from_the_summary_fails_loudly(tmp_path):
+    summary = [{"patch": "present", "gold": "gold_value"}]
+    (tmp_path / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+
+    with pytest.raises(KeyError, match="absent not in summary.json"):
+        export_demo._gold(tmp_path, ("summary.json", "absent"))

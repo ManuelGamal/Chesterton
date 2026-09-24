@@ -21,6 +21,8 @@ from chesterton.seed.record import SeedRecord
 TASK = "matplotlib__matplotlib-23314"
 SCREEN = f"agent_patches_v2/{TASK}/screen.json"
 
+_MISSING = object()  # Sentinel for missing gold lookup
+
 STORIES = [
     {"id": "hero", "tab": "Wrong patch, caught", "utboost": "wrong",
      "title": "An agent's fix passed SWE-bench. Here is what its tests let through.",
@@ -59,7 +61,10 @@ def _gold(root: Path, spec) -> str | None:
         return None
     summary_path, stem = spec
     rows = json.loads((root / summary_path).read_text(encoding="utf-8"))
-    return next((r["gold"] for r in rows if r["patch"] == stem), None)
+    result = next((r["gold"] for r in rows if r["patch"] == stem), _MISSING)
+    if result is _MISSING:
+        raise KeyError(f"{stem} not in {summary_path}")
+    return result
 
 
 def _submission(root: Path, spec) -> str:
