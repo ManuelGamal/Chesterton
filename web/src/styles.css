@@ -1,0 +1,42 @@
+@import "tailwindcss";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/600.css";
+
+:root {
+  --background: #0F172A;
+  --card: #1B2336;
+  --muted: #272F42;
+  --border: #334155;
+  --foreground: #F8FAFC;
+  --muted-foreground: #94A3B8;
+  --accent: #56B4E9;
+  --accent-foreground: #0F172A;
+  --verdict-survived: #D55E00;
+  --verdict-killed: #009E73;
+  --verdict-uncovered: #E69F00;
+  --verdict-pending: #64748B;
+  --verdict-error: #94A3B8;
+  --diff-add: rgba(46, 160, 67, 0.10);
+  --diff-del: rgba(248, 81, 73, 0.10);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+html, body, #root { height: 100%; }
+body { background: var(--background); color: var(--foreground); font-family: var(--font-sans); margin: 0; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tabular { font-variant-numeric: tabular-nums; }
