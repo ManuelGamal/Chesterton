@@ -63,7 +63,10 @@ async def answer(payload, *, stories_dir: Path, client, counter) -> WhyResult:
     if not (isinstance(story, str) and isinstance(finding, str)
             and _ID.match(story) and _ID.match(finding)):
         return _error(404, "not_found", "unknown story or finding")
-    found = _find(stories_dir, story, finding)
+    try:
+        found = _find(stories_dir, story, finding)
+    except (OSError, ValueError, KeyError, TypeError):
+        return _error(503, "stories_unavailable", "the demo's story data could not be read")
     if found is None:
         return _error(404, "not_found", "unknown story or finding")
     bundle, item = found

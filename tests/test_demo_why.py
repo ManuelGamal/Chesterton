@@ -114,3 +114,29 @@ async def test_a_slow_model_times_out_honestly(tmp_path, monkeypatch):
     result = await ask(tmp_path, {"story": "hero", "finding": "h0"}, client=Slow())
 
     assert result.status == 504 and result.body["error"] == "timeout"
+
+
+async def test_a_missing_or_corrupt_story_file_is_a_clean_error_and_costs_nothing(tmp_path):
+    client, counter = ScriptedClient(finding_reply()), Counter(1)
+
+    # (a) index lists "hero" but hero.json is missing
+    (tmp_path / "index.json").write_text(json.dumps({"stories": [{"id": "hero", "tab": "x"}]}),
+                                         encoding="utf-8")
+    result = await answer({"story": "hero", "finding": "h0"}, stories_dir=tmp_path,
+                          client=client, counter=counter)
+
+    assert result.status == 503 and result.body["error"] == "stories_unavailable"
+    assert "\\" not in result.body["message"] and "/" not in result.body["message"]
+    assert counter.hits == 0
+    assert client.calls == []
+
+    # (b) corrupt index.json (not valid JSON)
+    client, counter = ScriptedClient(finding_reply()), Counter(1)
+    (tmp_path / "index.json").write_text("not json", encoding="utf-8")
+    result = await answer({"story": "hero", "finding": "h0"}, stories_dir=tmp_path,
+                          client=client, counter=counter)
+
+    assert result.status == 503 and result.body["error"] == "stories_unavailable"
+    assert "\\" not in result.body["message"] and "/" not in result.body["message"]
+    assert counter.hits == 0
+    assert client.calls == []
