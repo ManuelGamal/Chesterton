@@ -37,22 +37,41 @@ export function parseDiff(diff) {
   return out;
 }
 
+const HEX_COLOR = /^#[0-9a-fA-F]{3,8}$/;
+
 const render = (tokens) =>
-  tokens.map((t) => `<span style="color:${t.color}">${esc(t.content)}</span>`).join("");
+  tokens
+    .map((t) => {
+      const text = esc(t.content);
+      return HEX_COLOR.test(t.color) ? `<span style="color:${t.color}">${text}</span>` : text;
+    })
+    .join("");
 
 export async function highlightDiff(diff, highlighter) {
   const lines = parseDiff(diff);
-  const byFile = new Map();
+  // Group by hunk (not by file): a hunk is tokenised independently of its
+  // neighbours, so an unclosed string/docstring in one hunk's context can't
+  // bleed its colour into the next hunk, which the diff never actually joins.
+  const groups = [];
+  let current = null;
   lines.forEach((l, i) => {
-    if (l.kind === "file" || l.kind === "hunk") return;
-    if (!byFile.has(l.file)) byFile.set(l.file, []);
-    byFile.get(l.file).push(i);
+    if (l.kind === "file") {
+      current = null;
+      return;
+    }
+    if (l.kind === "hunk") {
+      current = { file: l.file, idxs: [] };
+      groups.push(current);
+      return;
+    }
+    if (current) current.idxs.push(i);
   });
-  for (const [file, idxs] of byFile) {
+  for (const { file, idxs } of groups) {
     const lang = file.endsWith(".py") ? "python" : "text";
-    // Each side is tokenised as one block, so multi-line strings stay right.
+    // Each side of each hunk is tokenised as one block, so multi-line strings stay right.
     for (const side of ["new", "old"]) {
       const sideIdx = idxs.filter((i) => (side === "new" ? lines[i].kind !== "del" : lines[i].kind !== "add"));
+      if (sideIdx.length === 0) continue;
       const code = sideIdx.map((i) => lines[i].text).join("\n");
       const { tokens } = highlighter.codeToTokens(code, { lang, theme: THEME });
       sideIdx.forEach((i, k) => {

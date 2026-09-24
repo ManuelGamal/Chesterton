@@ -42,7 +42,7 @@ export function DiffPane({ lines, bundle, state, focus, onPick }: Props) {
           return <div key={i} className="border-y border-border bg-card px-3 py-1 text-muted-foreground">{line.file}</div>;
         }
         if (line.kind === "hunk") {
-          return <div key={i} className="px-3 text-[13px] text-muted-foreground" dangerouslySetInnerHTML={{ __html: line.html }} />;
+          return <div key={i} className="px-3 text-muted-foreground" dangerouslySetInnerHTML={{ __html: line.html }} />;
         }
         const g = gutter(line, bundle, state);
         const finding = headlineAt(line.file, line.new);
