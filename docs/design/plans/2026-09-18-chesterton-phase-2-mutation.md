@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.13, `libcst`, `openai` (against Token Factory), `pytest`.
 
-**Spec:** `docs/superpowers/specs/2026-09-18-chesterton-design.md`
+**Spec:** `docs/design/specs/2026-09-18-chesterton-design.md`
 
 **Builds on:** Phase 1 (merged, `112bfd2`). `changed_lines`, `semantic_hunks`, `covering_tests`, `uncovered_findings`, `SandboxRunner`/`FakeSandboxRunner` all exist and are verified live.
 

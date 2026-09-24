@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.12+, pytest with pytest-asyncio (auto mode), the existing `NemotronClient`, `SandboxPool` and `FakeSandboxRunner`, and `ast`/`difflib` from the standard library. No new dependencies.
 
-**Spec:** `docs/superpowers/specs/2026-09-18-chesterton-design.md`: §9 (triage and review synthesis) is the design; §10 (model routing) and §14 (failure modes) constrain it. §17's v2 result is why this matters now: "flagged at all" does not separate wrong patches from accepted ones, so the value has to come from *which* survivor matters and *what test catches it*.
+**Spec:** `docs/design/specs/2026-09-18-chesterton-design.md`: §9 (triage and review synthesis) is the design; §10 (model routing) and §14 (failure modes) constrain it. §17's v2 result is why this matters now: "flagged at all" does not separate wrong patches from accepted ones, so the value has to come from *which* survivor matters and *what test catches it*.
 
 ## Global Constraints
 
@@ -1888,7 +1888,7 @@ This is not a benchmark and makes no pre-registered claim. It answers two questi
 **Files:**
 - Create: `scripts/review_study.py`
 - Test: `tests/test_review_study.py`
-- Modify: `docs/superpowers/specs/2026-09-18-chesterton-design.md` (§9: what was built; results go in after the live run)
+- Modify: `docs/design/specs/2026-09-18-chesterton-design.md` (§9: what was built; results go in after the live run)
 
 **Interfaces:**
 - Consumes: `review_run` (Task 7); `SeedRecord`; `ConTreeSandboxRunner`; `NemotronClient`; `SandboxPool`.
@@ -2065,7 +2065,7 @@ Expected: 4 passed. Then the full suite.
 
 - [ ] **Step 5: Record what was built in the spec**
 
-In `docs/superpowers/specs/2026-09-18-chesterton-design.md`, at the end of §9 (just before `## 10. Model routing`), add:
+In `docs/design/specs/2026-09-18-chesterton-design.md`, at the end of §9 (just before `## 10. Model routing`), add:
 
 ```markdown
 ### As built — 2026-09-23
@@ -2091,7 +2091,7 @@ never change. Decisions the section above left open:
 - [ ] **Step 6: Commit**
 
 ```bash
-git add scripts/review_study.py tests/test_review_study.py docs/superpowers/specs/2026-09-18-chesterton-design.md
+git add scripts/review_study.py tests/test_review_study.py docs/design/specs/2026-09-18-chesterton-design.md
 git commit -m "feat: explore review on matplotlib-23314's wrong patches, checked against gold"
 ```
 

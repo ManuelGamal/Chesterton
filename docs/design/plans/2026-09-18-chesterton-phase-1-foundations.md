@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.13, `httpx`, `unidiff`, `libcst`, `coverage`, `pytest`, `pytest-asyncio`, `contree-sdk`.
 
-**Spec:** `docs/superpowers/specs/2026-09-18-chesterton-design.md`
+**Spec:** `docs/design/specs/2026-09-18-chesterton-design.md`
 
 **Revision note (2026-09-18):** revised after a seven-agent task-by-task
 critique. Tasks 4 and 5 were restructured; every other task took fixes. The

@@ -7,7 +7,7 @@ candidate identity, a validation gate, a Nemotron client, model-proposed
 semantic mutants spliced back into the full module, and an orchestrator that
 gates, ranks and budgets mutants. It also ran a measurement that decided
 whether the CrossHair tier is worth building. See
-`docs/superpowers/plans/2026-09-18-chesterton-phase-2-mutation.md` for the task
+`docs/design/plans/2026-09-18-chesterton-phase-2-mutation.md` for the task
 breakdown and the spec for the design.
 
 ---

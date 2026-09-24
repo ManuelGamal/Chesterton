@@ -12,7 +12,7 @@
 - **Testing:** Vitest with jsdom and Testing Library, and Playwright.
 - **Deployment:** Vercel with the Python runtime, and `upstash-redis` for the rate limit.
 
-**Spec:** `docs/superpowers/specs/2026-09-24-chesterton-demo-ui-design.md` (parent: `docs/superpowers/specs/2026-09-18-chesterton-design.md` §12).
+**Spec:** `docs/design/specs/2026-09-24-chesterton-demo-ui-design.md` (parent: `docs/design/specs/2026-09-18-chesterton-design.md` §12).
 
 ## Global Constraints
 
@@ -523,7 +523,7 @@ Expected: `FileNotFoundError` for `scripts/export_demo.py`.
 `scripts/export_demo.py`:
 
 ```python
-"""Write the demo's replay bundles (docs/superpowers/specs/2026-09-24-chesterton-demo-ui-design.md §4-5).
+"""Write the demo's replay bundles (docs/design/specs/2026-09-24-chesterton-demo-ui-design.md §4-5).
 
 Usage (from the repo root):
     python scripts/export_demo.py
@@ -2574,7 +2574,7 @@ A replay of three recorded runs, plus one live call. The URL is added after the 
 - **Models** on Token Factory (`https://api.tokenfactory.nebius.com/v1/`): `nvidia/Nemotron-3_5-Lightning` proposes mutants, `nvidia/nemotron-3-super-120b-a12b` triages survivors, and `nvidia/Nemotron-3-Ultra-550b-a55b` writes the regression test. The model ids are defined in `src/chesterton/llm/client.py`.
 - **The demo's live call:** `api/why.py` makes a real Nemotron Super call through `chesterton.demo.why.answer`. It is capped at 60 an hour and fails closed.
 - **Run it yourself:** `chesterton seed`, `chesterton run`, `chesterton review` (needs `NEBIUS_API_KEY` and `NEBIUS_PROJECT_ID`).
-- **The benchmark:** pre-registered and reported as registered, including its null result. See `docs/superpowers/specs/2026-09-18-chesterton-design.md` §17.
+- **The benchmark:** pre-registered and reported as registered, including its null result. See `docs/design/specs/2026-09-18-chesterton-design.md` §17.
 ```
 
 - [ ] **Step 4: Commit**

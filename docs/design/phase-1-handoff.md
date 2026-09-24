@@ -5,8 +5,8 @@
 Phase 1 built the offline-testable foundation: a sandbox abstraction behind a
 protocol, GitHub PR ingest with correct merge-base handling, diff parsing,
 semantic hunk grouping, coverage inversion, and the join that produces tier-0
-findings. See `docs/superpowers/plans/2026-09-18-chesterton-phase-1-foundations.md`
-for the task breakdown and `docs/superpowers/specs/2026-09-18-chesterton-design.md`
+findings. See `docs/design/plans/2026-09-18-chesterton-phase-1-foundations.md`
+for the task breakdown and `docs/design/specs/2026-09-18-chesterton-design.md`
 for the design it implements.
 
 ---

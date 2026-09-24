@@ -7,7 +7,7 @@ line of your patch in a parallel universe and reports which deletions your test
 suite never noticed.
 
 Status: implemented and benchmarked (v2, a registered null result), with a
-live demo. See [`docs/superpowers/specs/`](docs/superpowers/specs/) for the
+live demo. See [`docs/design/specs/`](docs/design/specs/) for the
 current design.
 
 Licensed under the MIT License.
@@ -31,4 +31,4 @@ the first deploy.
   - `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`, or the Upstash Vercel integration's `KV_REST_API_URL` / `KV_REST_API_TOKEN`;
   - if the counter is unreachable, the live call fails closed with a 503 rather than calling the model.
 - **Run it yourself:** `chesterton seed`, `chesterton run`, `chesterton review` (needs `NEBIUS_API_KEY` and `NEBIUS_PROJECT_ID`).
-- **The benchmark:** pre-registered and reported as registered, including its null result. See `docs/superpowers/specs/2026-09-18-chesterton-design.md` §17.
+- **The benchmark:** pre-registered and reported as registered, including its null result. See `docs/design/specs/2026-09-18-chesterton-design.md` §17.

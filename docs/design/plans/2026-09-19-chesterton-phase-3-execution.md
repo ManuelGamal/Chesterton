@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.13, asyncio, unidiff, LibCST (via Phase 2), contree-sdk 0.3.6, pytest + pytest-asyncio (`asyncio_mode = "auto"`).
 
-**Spec:** `docs/superpowers/specs/2026-09-18-chesterton-design.md`. It is the binding authority: §4 covers the phases and data model, §6 the budget, §7 test selection, §8 ddmin, §14 failure modes, §15 risks and live measurements. Read `docs/superpowers/phase-2-handoff.md` too, because its "Required in Phase 3" list is folded into Tasks 2, 5, 6 and 10.
+**Spec:** `docs/design/specs/2026-09-18-chesterton-design.md`. It is the binding authority: §4 covers the phases and data model, §6 the budget, §7 test selection, §8 ddmin, §14 failure modes, §15 risks and live measurements. Read `docs/design/phase-2-handoff.md` too, because its "Required in Phase 3" list is folded into Tasks 2, 5, 6 and 10.
 
 ## Global Constraints
 

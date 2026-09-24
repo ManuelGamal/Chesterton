@@ -1,4 +1,4 @@
-"""Write the demo's replay bundles (docs/superpowers/specs/2026-09-24-chesterton-demo-ui-design.md §4-5).
+"""Write the demo's replay bundles (docs/design/specs/2026-09-24-chesterton-demo-ui-design.md §4-5).
 
 Usage (from the repo root):
     python scripts/export_demo.py
