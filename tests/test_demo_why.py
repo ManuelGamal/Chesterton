@@ -3,9 +3,10 @@
 import asyncio
 import json
 
+import httpx
 import openai
 
-from chesterton.demo.why import HOURLY_CAP, answer
+from chesterton.demo.why import HOURLY_CAP, UpstashCounter, answer
 from chesterton.llm.client import REASONING_MODEL
 
 from conftest import ScriptedClient, finding_reply
@@ -75,6 +76,31 @@ async def test_unknown_story_or_finding_is_rejected_and_costs_nothing(tmp_path):
     assert client.calls == [] and counter.hits == 0
 
 
+async def test_a_trailing_newline_on_an_id_is_rejected_like_any_other_bad_id(tmp_path):
+    client, counter = ScriptedClient(finding_reply()), Counter(1)
+
+    result = await ask(tmp_path, {"story": "hero\n", "finding": "h0"}, client=client, counter=counter)
+
+    assert result.status == 404
+    assert client.calls == [] and counter.hits == 0
+
+
+def test_the_id_pattern_uses_fullmatch_so_a_trailing_newline_is_not_a_dollar_loophole():
+    from chesterton.demo.why import _valid_id
+
+    assert _valid_id("hero") is True
+    assert _valid_id("hero\n") is False
+
+
+async def test_a_malformed_reply_is_reported_as_a_failure_not_an_unclassified_200(tmp_path):
+    client = ScriptedClient("not the JSON that was asked for")
+
+    result = await ask(tmp_path, {"story": "hero", "finding": "h0"}, client=client)
+
+    assert result.status == 502 and result.body["error"] == "malformed"
+    assert result.body["recorded"]["explanation"] == "recorded explanation"
+
+
 async def test_over_the_cap_no_model_call_is_made(tmp_path):
     client = ScriptedClient(finding_reply())
 
@@ -140,3 +166,91 @@ async def test_a_missing_or_corrupt_story_file_is_a_clean_error_and_costs_nothin
     assert "\\" not in result.body["message"] and "/" not in result.body["message"]
     assert counter.hits == 0
     assert client.calls == []
+
+
+_ENV_NAMES = ("UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN", "KV_REST_API_URL", "KV_REST_API_TOKEN")
+
+
+def _clear_upstash_env(monkeypatch):
+    for name in _ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
+
+
+def _mock_client(handler) -> httpx.Client:
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def test_the_upstash_env_names_are_accepted(monkeypatch):
+    _clear_upstash_env(monkeypatch)
+    monkeypatch.setenv("UPSTASH_REDIS_REST_URL", "https://x.upstash.io")
+    monkeypatch.setenv("UPSTASH_REDIS_REST_TOKEN", "tok")
+
+    counter = UpstashCounter.from_env(client=_mock_client(
+        lambda r: httpx.Response(200, json=[{"result": 3}, {"result": 1}])))
+
+    assert counter.hit() == 3
+
+
+def test_the_vercel_kv_env_names_are_accepted_as_a_fallback(monkeypatch):
+    _clear_upstash_env(monkeypatch)
+    monkeypatch.setenv("KV_REST_API_URL", "https://x.upstash.io")
+    monkeypatch.setenv("KV_REST_API_TOKEN", "tok")
+
+    counter = UpstashCounter.from_env(client=_mock_client(
+        lambda r: httpx.Response(200, json=[{"result": 3}, {"result": 1}])))
+
+    assert counter.hit() == 3
+
+
+def test_missing_env_leaves_the_counter_unavailable_and_names_the_gap_on_stderr(monkeypatch, capsys):
+    _clear_upstash_env(monkeypatch)
+
+    counter = UpstashCounter.from_env()
+
+    assert counter.hit() is None
+    err = capsys.readouterr().err
+    assert "UPSTASH_REDIS_REST_URL" in err and "tok" not in err
+
+
+def test_a_successful_transaction_increments_and_sets_a_conditional_ttl():
+    seen = {}
+
+    def handler(request):
+        seen["auth"] = request.headers["authorization"]
+        seen["url"] = str(request.url)
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json=[{"result": 7}, {"result": 1}])
+
+    counter = UpstashCounter("https://x.upstash.io", "tok", client=_mock_client(handler))
+
+    assert counter.hit() == 7
+    assert seen["auth"] == "Bearer tok"
+    assert seen["url"] == "https://x.upstash.io/multi-exec"
+    incr, expire = seen["body"]
+    assert incr[0] == "INCR" and incr[1].startswith("why:")
+    assert expire == ["EXPIRE", incr[1], "3600", "NX"]
+
+
+def test_a_500_from_upstash_fails_closed():
+    counter = UpstashCounter("https://x.upstash.io", "tok",
+                             client=_mock_client(lambda r: httpx.Response(500, text="oops")))
+
+    assert counter.hit() is None
+
+
+def test_an_error_entry_in_the_transaction_fails_closed():
+    def handler(request):
+        return httpx.Response(200, json=[{"error": "WRONGTYPE"}, {"result": 1}])
+
+    counter = UpstashCounter("https://x.upstash.io", "tok", client=_mock_client(handler))
+
+    assert counter.hit() is None
+
+
+def test_a_transport_exception_fails_closed():
+    def handler(request):
+        raise httpx.ConnectError("down", request=request)
+
+    counter = UpstashCounter("https://x.upstash.io", "tok", client=_mock_client(handler))
+
+    assert counter.hit() is None

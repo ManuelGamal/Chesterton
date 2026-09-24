@@ -13,9 +13,12 @@ import asyncio
 import json
 import os
 import re
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+import httpx
 
 from chesterton.llm.client import REASONING_MODEL
 from chesterton.triage.classify import classify_survivor
@@ -23,7 +26,12 @@ from chesterton.triage.evidence import Evidence
 
 HOURLY_CAP = 60
 MODEL_TIMEOUT_S = 50.0
-_ID = re.compile(r"^[a-z0-9-]{1,40}$")
+UPSTASH_TIMEOUT_S = 5.0
+_ID = re.compile(r"[a-z0-9-]{1,40}")
+
+
+def _valid_id(value: str) -> bool:
+    return _ID.fullmatch(value) is not None
 
 
 @dataclass(frozen=True)
@@ -61,7 +69,7 @@ async def answer(payload, *, stories_dir: Path, client, counter) -> WhyResult:
         return _error(400, "bad_request", "send a JSON object with story and finding")
     story, finding = payload.get("story"), payload.get("finding")
     if not (isinstance(story, str) and isinstance(finding, str)
-            and _ID.match(story) and _ID.match(finding)):
+            and _valid_id(story) and _valid_id(finding)):
         return _error(404, "not_found", "unknown story or finding")
     try:
         found = _find(stories_dir, story, finding)
@@ -85,7 +93,7 @@ async def answer(payload, *, stories_dir: Path, client, counter) -> WhyResult:
         c = await asyncio.wait_for(classify_survivor(client, _evidence(bundle, item)), MODEL_TIMEOUT_S)
     except asyncio.TimeoutError:
         return _error(504, "timeout", f"Nemotron did not answer within {MODEL_TIMEOUT_S:.0f} s", recorded)
-    if c.failure in ("unavailable", "truncated"):
+    if c.failure in ("unavailable", "truncated", "malformed"):
         return _error(502, c.failure, c.explanation, recorded)
     return WhyResult(200, {
         "label": c.label, "category": c.category, "confident": c.confident,
@@ -96,29 +104,57 @@ async def answer(payload, *, stories_dir: Path, client, counter) -> WhyResult:
 
 
 class UpstashCounter:
-    """Hourly INCR in Upstash Redis; None on any failure, so callers fail closed."""
+    """Hourly INCR over Upstash's REST pipeline; None on any failure, so callers fail closed."""
 
-    def __init__(self, redis):
-        self._redis = redis
+    def __init__(self, url: str | None, token: str | None, *, client: httpx.Client | None = None):
+        self._url = url.rstrip("/") if url else url
+        self._token = token
+        self._client = client
 
     @classmethod
-    def from_env(cls) -> "UpstashCounter":
-        try:
-            from upstash_redis import Redis
-
-            return cls(Redis(url=os.environ["UPSTASH_REDIS_REST_URL"],
-                             token=os.environ["UPSTASH_REDIS_REST_TOKEN"]))
-        except Exception:  # missing package or env: the counter is unreachable
-            return cls(None)
+    def from_env(cls, *, client: httpx.Client | None = None) -> "UpstashCounter":
+        url = os.environ.get("UPSTASH_REDIS_REST_URL") or os.environ.get("KV_REST_API_URL")
+        token = os.environ.get("UPSTASH_REDIS_REST_TOKEN") or os.environ.get("KV_REST_API_TOKEN")
+        if not url or not token:
+            missing = []
+            if not url:
+                missing.append("UPSTASH_REDIS_REST_URL (or KV_REST_API_URL)")
+            if not token:
+                missing.append("UPSTASH_REDIS_REST_TOKEN (or KV_REST_API_TOKEN)")
+            print(f"UpstashCounter unavailable: missing {', '.join(missing)}", file=sys.stderr)
+        return cls(url, token, client=client)
 
     def hit(self) -> int | None:
-        if self._redis is None:
+        if not self._url or not self._token:
             return None
         key = f"why:{int(time.time() // 3600)}"
+        client = self._client or httpx.Client()
         try:
-            value = self._redis.incr(key)
-            if value == 1:
-                self._redis.expire(key, 3600)
-            return int(value)
-        except Exception:
+            response = client.post(
+                f"{self._url}/multi-exec",
+                headers={"Authorization": f"Bearer {self._token}"},
+                json=[["INCR", key], ["EXPIRE", key, "3600", "NX"]],
+                timeout=UPSTASH_TIMEOUT_S,
+            )
+        except httpx.HTTPError:
+            return None
+        finally:
+            if self._client is None:
+                client.close()
+        if response.status_code != 200:
+            return None
+        try:
+            results = response.json()
+        except ValueError:
+            return None
+        if not isinstance(results, list) or not results:
+            return None
+        incr = results[0]
+        if not isinstance(incr, dict) or "error" in incr:
+            return None
+        if any(isinstance(r, dict) and "error" in r for r in results):
+            return None
+        try:
+            return int(incr["result"])
+        except (KeyError, TypeError, ValueError):
             return None
