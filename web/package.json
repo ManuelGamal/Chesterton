@@ -15,6 +15,7 @@
   "author": "",
   "license": "ISC",
   "type": "module",
+  "engines": { "node": "24.x" },
   "dependencies": {
     "@fontsource/ibm-plex-sans": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
