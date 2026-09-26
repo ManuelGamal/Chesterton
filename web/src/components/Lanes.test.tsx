@@ -13,18 +13,13 @@ const end = stateAt(golden, golden.timeline.total_s);
 
 describe("Lanes", () => {
   it("labels a one-line hunk with one number and a range with an en dash", () => {
-    render(<Lanes bundle={golden} state={end} reduced />);
+    render(<Lanes bundle={golden} state={end} reduced selected={null} highlight={null} onSelect={() => {}} />);
     expect(screen.getByText("pay.py:4")).toBeInTheDocument();
     expect(screen.getByText("pay.py:2–3")).toBeInTheDocument();
   });
 
-  it("says 1 probe in the singular", () => {
-    render(<Lanes bundle={{ ...golden, ddmin: { undefended: [], probes: 1 } }} state={end} reduced />);
-    expect(screen.getByText("Hunk removal (ddmin), 1 probe: every hunk is needed by the tests")).toBeInTheDocument();
-  });
-
-  it("says probes in the plural", () => {
-    render(<Lanes bundle={golden} state={end} reduced />);
-    expect(screen.getByText("Hunk removal (ddmin), 3 probes: 1 hunk the tests would not miss")).toBeInTheDocument();
+  it("shows nothing but pending lanes before any mutant runs", () => {
+    render(<Lanes bundle={golden} state={stateAt(golden, 0)} reduced selected={null} highlight={null} onSelect={() => {}} />);
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
   });
 });

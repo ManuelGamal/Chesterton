@@ -1,13 +1,22 @@
 import { AnimatePresence, motion } from "motion/react";
-import type { Bundle } from "../bundle";
+import type { Bundle, Verdict } from "../bundle";
 import type { ReplayState } from "../engine";
 import { span } from "../format";
 import { VERDICTS, verdictRank } from "../verdicts";
 
-export function Lanes({ bundle, state, reduced }: { bundle: Bundle; state: ReplayState; reduced: boolean }) {
+interface Props {
+  bundle: Bundle;
+  state: ReplayState;
+  reduced: boolean;
+  selected: string | null;
+  highlight: Verdict | null;
+  onSelect: (id: string) => void;
+}
+
+/** One lane per changed hunk; every finished mutant is a capsule you can open. */
+export function Lanes({ bundle, state, reduced, selected, highlight, onSelect }: Props) {
   const byId = new Map(bundle.mutants.map((m) => [m.id, m]));
   const base = (f: string) => f.split("/").pop();
-  const undefendedCount = bundle.ddmin.undefended.length;
   return (
     <div role="region" aria-label="Mutants by hunk">
       {bundle.lanes.map((lane) => {
@@ -32,17 +41,31 @@ export function Lanes({ bundle, state, reduced }: { bundle: Bundle; state: Repla
               <AnimatePresence initial={false}>
                 {live.map((s) => {
                   const m = byId.get(s.id)!;
-                  // Dark text on the slate pending fill is too low-contrast: use the light foreground there.
                   const done = s.phase === "done";
                   const v = done ? VERDICTS[m.verdict] : VERDICTS.pending;
+                  const dimmed = done && highlight !== null && m.verdict !== highlight;
+                  const pill = `inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-semibold ${done ? "text-background" : "text-foreground"}`;
+                  const motionProps = {
+                    layout: !reduced,
+                    initial: reduced ? false : { x: -24, opacity: 0 },
+                    animate: { x: 0, opacity: dimmed ? 0.35 : 1 },
+                    transition: { type: "spring" as const, stiffness: 380, damping: 30 },
+                  };
+                  if (!done) {
+                    return (
+                      <motion.span key={s.id} {...motionProps} className={pill} style={{ background: v.cssVar }} title={v.term}>
+                        <span aria-hidden="true">{v.glyph}</span>{v.word}
+                      </motion.span>
+                    );
+                  }
                   return (
-                    <motion.span key={s.id} layout={!reduced}
-                      initial={reduced ? false : { x: -24, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
-                      transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-semibold ${done ? "text-background" : "text-foreground"}`}
+                    <motion.button key={s.id} type="button" {...motionProps}
+                      aria-pressed={selected === s.id} data-dimmed={dimmed} title={v.term}
+                      onClick={() => onSelect(s.id)}
+                      className={`${pill} cursor-pointer aria-pressed:outline-2 aria-pressed:outline-offset-2 aria-pressed:outline-accent`}
                       style={{ background: v.cssVar }}>
                       <span aria-hidden="true">{v.glyph}</span>{v.word}
-                    </motion.span>
+                    </motion.button>
                   );
                 })}
               </AnimatePresence>
@@ -50,12 +73,6 @@ export function Lanes({ bundle, state, reduced }: { bundle: Bundle; state: Repla
           </div>
         );
       })}
-      {state.showDdmin && (
-        <p className="px-3 py-2 text-[13px] text-muted-foreground">
-          Hunk removal (ddmin), {bundle.ddmin.probes} probe{bundle.ddmin.probes === 1 ? "" : "s"}:{" "}
-          {undefendedCount === 0 ? "every hunk is needed by the tests" : `${undefendedCount} hunk${undefendedCount > 1 ? "s" : ""} the tests would not miss`}
-        </p>
-      )}
     </div>
   );
 }
