@@ -1235,6 +1235,8 @@ A difference between arms is not tested and must not be presented as a finding.
 
 **Budget rule.** If the pilot's cost per patch, times 292, exceeds the budget the project owner sets after the pilot, the main study runs on a stratified random sample: the same fraction of pairs from every task, drawn with seed 20260926. The fraction is fixed before any main-study run and recorded as an amendment. The report states that it is a sample.
 
+**Amendment 1 — 2026-09-26, before any v3 run.** Written down so that a sample and the intervals can be rebuilt from this text alone; no estimand changes. **The sample:** each task's pairs are sorted by wrong-patch stem, and k = max(1, round(fraction × n)) of them are drawn with Python's `random.Random(f"20260926:{task}").sample` (Python's `round` rounds halves to even, and every task keeps at least one pair). **The cluster bootstrap:** tasks with no eligible patch for an estimand (n = 0) are left out of that estimand's resampling pool; each resample draws as many tasks as the pool holds, with replacement, from `random.Random(20260926)`; its statistic is the pooled ratio (total k / total n); the interval is the nearest-rank pair of the sorted 10,000 statistics at indices round(0.025 × 9,999) and round(0.975 × 9,999). The code is `src/chesterton/benchmark/verified.py`.
+
 **Reporting whatever the result.** Both primary estimands are reported with both intervals, in this section and in the README, even if they are low.
 
 ## 18. Schedule
