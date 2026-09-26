@@ -34,6 +34,11 @@ def population(pairs: list[dict], runs: Path) -> list[Pair]:
     """The pairs v2 analysed: those whose wrong and control run files both exist."""
     out = []
     for p in pairs:
+        if not p.get("wrong") or not p.get("control"):
+            # match_controls leaves control null when no size-matched
+            # control patch is left for a wrong patch; it has no control run
+            # file, so it is excluded here rather than raising.
+            continue
         wrong, control = Path(p["wrong"]).stem, Path(p["control"]).stem
         if all((runs / p["task"] / f"{stem}.json").exists() for stem in (wrong, control)):
             out.append(Pair(p["task"], wrong, control))

@@ -74,10 +74,7 @@ async def build_gold_seeds(runner, tasks, out: Path, *, fetch_bases=None, build=
 def stage_patches(bench: Path, stage: str, *, fraction: float | None = None) -> list[tuple[str, str, str]]:
     """The registered patches for a stage; main's budget sample is fixed once, on first use."""
     pairs = json.loads((bench / "pairs.json").read_text(encoding="utf-8"))
-    # A wrong patch with no size-matched control left (match_controls) is
-    # recorded with control=None; it was never run and cannot be a pair.
-    matched = [p for p in pairs if p.get("control")]
-    pop = v.population(matched, bench / "runs")
+    pop = v.population(pairs, bench / "runs")
     pilot = v.pilot(pop)
     if stage == "pilot":
         return v.patches(pilot)
@@ -98,28 +95,52 @@ def stage_patches(bench: Path, stage: str, *, fraction: float | None = None) -> 
     return v.patches(picked)
 
 
+def _fields_from_review(review: dict) -> tuple[dict, str | None, str | None]:
+    """The row's fields but for `gold`, straight from a parsed review.json.
+
+    `review_run` already ran (spec §17, a completed review is never rerun);
+    `ReviewReport.to_json()` already computed `regression.verified`, so it is
+    read here, never recomputed. Returns the fields plus the verified test's
+    path and source, for the caller to gold-check.
+    """
+    triage = review["triage"]
+    regression = review.get("regression")
+    verified, status, attempts, path, source = False, None, 0, None, None
+    if regression is not None:
+        verified = regression["verified"]
+        verification = regression.get("verification")
+        status = verification["status"] if verification else regression.get("note")
+        attempts = regression["attempts"]
+        path, source = regression["path"], regression["source"]
+    fields = {
+        "headline": len(triage["headline"]), "verified": verified, "status": status,
+        "super_calls": triage["model_calls"], "ultra_calls": attempts,
+        "ops": review["ops_used"], "wall_s": round(review["wall_s"], 3),
+    }
+    return fields, path, source
+
+
+async def _row_from_review(review: dict, runner, gold: SeedRecord | None) -> dict:
+    """The row's fields, including the gold check, from a parsed review.json."""
+    fields, path, source = _fields_from_review(review)
+    outcome = None
+    if fields["verified"]:
+        if gold is None:
+            outcome = "error"
+        else:
+            outcome = await _review_study.gold_check(SandboxPool(runner, op_budget=1), gold, path, source)
+            fields["ops"] += 1
+    fields["gold"] = outcome
+    return fields
+
+
 async def review_patch(bench: Path, task: str, stem: str, runner, client, gold: SeedRecord | None, out: Path) -> dict:
     seed = SeedRecord.from_json((bench / "seeds" / task / f"{stem}.json").read_text(encoding="utf-8"))
     report = json.loads((bench / "runs" / task / f"{stem}.json").read_text(encoding="utf-8"))
     review = await review_run(seed, report, runner, client)
-    _write(out / f"{stem}.review.json", review.to_json())
-    test = review.regression
-    verified = bool(test and test.verified)
-    outcome, gold_ops = None, 0
-    if verified:
-        if gold is None:
-            outcome = "error"
-        else:
-            outcome = await _review_study.gold_check(SandboxPool(runner, op_budget=1), gold, test.path, test.source)
-            gold_ops = 1
-    status = None
-    if test is not None:
-        status = test.verification.status if test.verification else test.note
-    return {
-        "headline": len(review.triage.headline), "verified": verified, "status": status, "gold": outcome,
-        "super_calls": review.triage.model_calls, "ultra_calls": test.attempts if test else 0,
-        "ops": review.ops_used + gold_ops, "wall_s": round(review.wall_s, 3),
-    }
+    text = review.to_json()
+    _write(out / f"{stem}.review.json", text)
+    return await _row_from_review(json.loads(text), runner, gold)
 
 
 EMPTY = {"headline": 0, "verified": False, "status": None, "gold": None,
@@ -130,7 +151,9 @@ async def run_stage(bench: Path, out: Path, gold_dir: Path, todo, runner, client
     golds: dict[str, SeedRecord | None] = {}
     rows = []
     for task, stem, arm in todo:
-        row_path = out / task / f"{stem}.row.json"
+        task_dir = out / task
+        row_path = task_dir / f"{stem}.row.json"
+        review_path = task_dir / f"{stem}.review.json"
         prior = json.loads(row_path.read_text(encoding="utf-8")) if row_path.exists() else None
         if prior is not None and prior["error"] is None:
             rows.append(prior)
@@ -140,7 +163,14 @@ async def run_stage(bench: Path, out: Path, gold_dir: Path, todo, runner, client
             golds[task] = SeedRecord.from_json(path.read_text(encoding="utf-8")) if path.exists() else None
         row = {"task": task, "patch": stem, "arm": arm, "retries": prior["retries"] + 1 if prior else 0}
         try:
-            row |= await review_patch(bench, task, stem, runner, client, golds[task], out / task)
+            if review_path.exists():
+                # A review that completed is never rerun (spec §17): a crash
+                # between writing review.json and row.json must resume from
+                # the review already on disk, not pay for another one.
+                review = json.loads(review_path.read_text(encoding="utf-8"))
+                row |= await _row_from_review(review, runner, golds[task])
+            else:
+                row |= await review_patch(bench, task, stem, runner, client, golds[task], task_dir)
             row["error"] = None
         except Exception as exc:  # recorded and retried later, never fatal to the stage
             row |= EMPTY | {"error": f"{type(exc).__name__}: {str(exc)[:300]}"}
@@ -190,8 +220,7 @@ async def _main(argv: list[str]) -> int:
     try:
         if args.cmd == "gold-seeds":
             pairs = json.loads((BENCH / "pairs.json").read_text(encoding="utf-8"))
-            matched = [p for p in pairs if p.get("control")]
-            tasks = sorted({p.task for p in v.population(matched, BENCH / "runs")})
+            tasks = sorted({p.task for p in v.population(pairs, BENCH / "runs")})
             for task, state in (await build_gold_seeds(runner, tasks, BENCH / "gold-seeds")).items():
                 print(f"  {task}: {state}")
             return 0

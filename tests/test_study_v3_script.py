@@ -72,6 +72,24 @@ async def test_a_completed_review_is_never_rerun(tmp_path, demo_seed):
     assert again == first
 
 
+async def test_a_crash_after_review_json_but_before_row_json_is_resumed_without_a_second_review(tmp_path, demo_seed):
+    b = bench(tmp_path, demo_seed)
+    out, todo = b / "study-v3" / "pilot", study.stage_patches(b, "pilot")
+    first = await study.run_stage(b, out, b / "gold-seeds", todo, runner(), good_client())
+    assert (out / TASK / "w1.review.json").exists()
+    (out / TASK / "w1.row.json").unlink()  # simulate the crash: review.json survives, row.json does not
+
+    client = ScriptedClient(raises=openai.OpenAIError("must not be called"))
+    resumed = await study.run_stage(b, out, b / "gold-seeds", todo, runner(), client)
+
+    assert client.calls == []
+    original = next(r for r in first if r["patch"] == "w1")
+    rebuilt = next(r for r in resumed if r["patch"] == "w1")
+    assert rebuilt["error"] is None and rebuilt["verified"] is True and rebuilt["gold"] == "passes_on_gold"
+    assert (rebuilt["headline"], rebuilt["super_calls"], rebuilt["ultra_calls"]) == \
+           (original["headline"], original["super_calls"], original["ultra_calls"])
+
+
 async def test_an_errored_review_is_retried_and_counted(tmp_path, demo_seed):
     b = bench(tmp_path, demo_seed)
     out, todo = b / "study-v3" / "pilot", study.stage_patches(b, "pilot")

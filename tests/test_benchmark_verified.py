@@ -17,7 +17,10 @@ def write_runs(root, task, stems):
 def test_the_population_is_the_pairs_whose_two_runs_exist(tmp_path):
     write_runs(tmp_path, "t1", ["w1", "c1", "w2"])
     pairs = [{"task": "t1", "wrong": "w1.diff", "control": "c1.diff"},
-             {"task": "t1", "wrong": "w2.diff", "control": "c2.diff"}]
+             {"task": "t1", "wrong": "w2.diff", "control": "c2.diff"},
+             # match_controls leaves this null when no control is left; it
+             # has no control run file, so it is excluded, not an error.
+             {"task": "t1", "wrong": "w3.diff", "control": None}]
 
     assert v.population(pairs, tmp_path) == [v.Pair("t1", "w1", "c1")]
 
