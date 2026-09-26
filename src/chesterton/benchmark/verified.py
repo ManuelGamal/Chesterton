@@ -274,8 +274,10 @@ def report(
         },
         "gold_errors": len(gold_errors),
         "gold_errors_list": [
+            # No exit code means no run: the task has no reference-fix seed,
+            # and its build failure's text is not a test run's collection error.
             {"task": r["task"], "patch": r["patch"], "exit": r.get("gold_exit"),
-             "kind": gold_error_kind(r.get("gold_tail"))}
+             "kind": gold_error_kind(r.get("gold_tail")) if r.get("gold_exit") is not None else "other"}
             for r in gold_errors
         ],
         "by_arm": {

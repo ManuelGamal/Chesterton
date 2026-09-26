@@ -134,6 +134,13 @@ def test_a_gold_error_is_listed_classified_and_counted_in_the_agreement_bound():
     assert (r["agreement_bound"]["k"], r["agreement_bound"]["n"]) == (1, 3)
 
 
+def test_a_gold_error_from_a_missing_seed_is_other_whatever_its_build_failure_says():
+    no_seed = row("a", verified=True, gold="error")
+    no_seed |= {"gold_exit": None, "gold_tail": "no reference-fix seed: failed: SeedBuildError: ImportError: pip"}
+
+    assert v.report([no_seed])["gold_errors_list"] == [{"task": "a", "patch": "p", "exit": None, "kind": "other"}]
+
+
 def test_a_gold_error_is_a_collection_error_only_when_its_tail_says_so():
     assert v.gold_error_kind("ImportError while importing test module") == "collection"
     assert v.gold_error_kind("!!! Interrupted: 1 error during collection !!!") == "collection"
