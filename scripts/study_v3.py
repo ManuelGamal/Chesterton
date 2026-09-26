@@ -11,7 +11,7 @@ in this order (spec §17, Amendments 1 and 2), from the repo root:
     3. Read the billing (Nebius Token Factory plus sandboxes), c = spend / 10, then
        python scripts/study_v3.py budget --usd B --cost-per-patch C
          Prints f = min(1, B / (292 x c)), rounded down to 0.05, and each task's k.
-    4. If f < 1, record B, c and f in spec §17 as Amendment 3, before any main run.
+    4. If f < 1, record B, c and f in spec §17 as Amendment 4, before any main run.
     5. python scripts/study_v3.py run main [--sample f]
          `--sample f --dry-run` prints each task's k and writes nothing.
     6. python scripts/study_v3.py report main
@@ -559,7 +559,7 @@ async def _main(argv: list[str]) -> int:
             _say("f = 0: the budget is below the smallest sample; no sample can be drawn")
             return 1
         _print_sizes(v.sample_sizes(_main_pairs(BENCH), f))
-        _say("record B, c and f as Amendment 3 before any main run; nothing was written")
+        _say("record B, c and f as Amendment 4 before any main run; nothing was written")
         return 0
 
     if args.sample is not None and args.stage != "main":
