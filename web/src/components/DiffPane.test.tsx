@@ -40,6 +40,14 @@ describe("DiffPane", () => {
     expect(screen.getByRole("button", { name: "Show the changes on line 3" })).toHaveAttribute("tabindex", "-1");
   });
 
+  it("does not make a line with no mutant a button, even when no test runs it", () => {
+    const bundle = { ...golden, tier0: [...golden.tier0, { file: "pay.py", line: 9 }] };
+    const lines = [...LINES, { kind: "add" as const, file: "pay.py", old: null, new: 9, html: "extra" }];
+    render(<DiffPane lines={lines} bundle={bundle} state={end} selected={null} onSelectLine={() => {}} />);
+    expect(screen.getByLabelText("line 9: no test runs this line")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Show the changes on line 9" })).not.toBeInTheDocument();
+  });
+
   it("labels the hunk the tests would not miss, once, when ddmin shows", () => {
     const { rerender } = pane({ state: stateAt(golden, 0) });
     expect(screen.queryByText("the tests would not miss this hunk")).not.toBeInTheDocument();

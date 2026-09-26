@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { Bundle, DiffLine, Mutant } from "../bundle";
 import { lineKey, type ReplayState } from "../engine";
+import { mutantAtLine } from "../story";
 import { VERDICTS } from "../verdicts";
 
 interface Props {
@@ -75,7 +76,8 @@ export function DiffPane({ lines, bundle, state, selected, onSelectLine, reduced
           ? `color-mix(in srgb, ${g.verdict.cssVar} ${g.tint}%, ${base === "transparent" ? "var(--background)" : base})`
           : base;
         const borderLeft = undefended ? "2px dashed var(--verdict-uncovered)" : "2px solid transparent";
-        const clickable = g !== null && line.file !== null && line.new !== null;
+        const clickable = g !== null && line.file !== null && line.new !== null
+          && mutantAtLine(bundle, line.file, line.new) !== null;
         return (
           <div key={i} ref={i === selectedFirst ? selectedRef : undefined}
             className={`flex ${isSelected ? "outline-2 outline-accent -outline-offset-2 outline" : ""}`} style={{ background, borderLeft }}>
