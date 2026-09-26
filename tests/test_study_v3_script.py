@@ -378,12 +378,139 @@ async def test_a_gold_check_whose_sandbox_operation_failed_is_retried_from_the_s
 
     failed = await study.run_stage(b, out, b / "gold-seeds", todo, scripted_runner(gold=gold), good_client())
 
-    assert all(r["error"].startswith("infrastructure: GoldSandboxError") and r["gold"] is None for r in failed)
+    for r in failed:  # Amendment 3, item 2: a failed gold operation never erases the verified test
+        assert r["error"] == "infrastructure: gold check: OperationTimedOutError: 300 s" and r["gold"] is None
+        assert r["verified"] is True and r["headline"] == 1 and r["status"] == "verified"
+        assert r["super_calls"] >= 3 and r["ultra_calls"] >= 1 and r["ops"] >= 3
+        assert r["wall_s"] == pytest.approx(r["review_wall_s"] + r["gold_s"], abs=2e-3)
     assert (out / TASK / "w1.review.json").exists()  # the review is kept, never redone
     client = ScriptedClient(raises=openai.OpenAIError("must not be called"))
     retried = await study.run_stage(b, out, b / "gold-seeds", todo, runner(), client)
     assert client.calls == []
     assert all(r["error"] is None and r["gold"] == "passes_on_gold" and r["retries"] == 1 for r in retried)
+
+
+async def test_a_gold_check_that_fails_on_its_first_attempt_and_3_retries_is_a_gold_error_of_kind_other(
+        tmp_path, demo_seed):
+    b = bench(tmp_path, demo_seed)
+    out, todo = b / "study-v3" / "pilot", study.stage_patches(b, "pilot")
+    gold = RunResult("", "", None, None, error="OperationTimedOutError: 300 s")
+    await study.run_stage(b, out, b / "gold-seeds", todo, scripted_runner(gold=gold), good_client())
+    for _ in range(3):
+        rows = await study.run_stage(b, out, b / "gold-seeds", todo, scripted_runner(gold=gold),
+                                     ScriptedClient(raises=openai.OpenAIError("must not be called")))
+        assert all(r["error"] and r["verified"] for r in rows)
+    assert all(r["retries"] == 3 for r in rows)
+
+    never = scripted_runner(gold=RuntimeError("no gold check may run at the cap"))
+    capped = await study.run_stage(b, out, b / "gold-seeds", todo, never,
+                                   ScriptedClient(raises=openai.OpenAIError("must not be called")))
+
+    assert never.calls == []
+    for r in capped:
+        assert r["error"] is None and r["gold_capped"] is True and r["verified"] is True
+        assert r["gold"] == "error" and r["gold_exit"] is None
+        assert r["gold_tail"] == "OperationTimedOutError: 300 s"
+    rep = study.write_report(out, todo, provenance=STUB)
+    assert (rep["yield"]["k"], rep["yield"]["n"]) == (2, 2)
+    assert (rep["agreement_bound"]["k"], rep["agreement_bound"]["n"]) == (0, 2)
+    assert [e["kind"] for e in rep["gold_errors_list"]] == ["other", "other"]
+    again = await study.run_stage(b, out, b / "gold-seeds", todo, never, good_client())
+    assert again == capped and never.calls == []
+
+
+async def test_retry_capped_runs_the_gold_check_again(tmp_path, demo_seed):
+    b = bench(tmp_path, demo_seed)
+    out, todo = b / "study-v3" / "pilot", study.stage_patches(b, "pilot")
+    gold = RunResult("", "", None, None, error="OperationTimedOutError: 300 s")
+    for _ in range(4):
+        await study.run_stage(b, out, b / "gold-seeds", todo, scripted_runner(gold=gold), good_client())
+
+    rows = await study.run_stage(b, out, b / "gold-seeds", todo, runner(),
+                                 ScriptedClient(raises=openai.OpenAIError("must not be called")), retry_capped=True)
+
+    assert all(r["error"] is None and r["gold"] == "passes_on_gold" and not r.get("gold_capped") for r in rows)
+
+
+async def test_a_review_that_raises_on_its_first_attempt_and_3_retries_stands_as_an_error(tmp_path, demo_seed):
+    b = bench(tmp_path, demo_seed)
+    out, todo = b / "study-v3" / "pilot", study.stage_patches(b, "pilot")
+    for _ in range(4):
+        rows = await study.run_stage(b, out, b / "gold-seeds", todo, runner(),
+                                     ScriptedClient(raises=openai.OpenAIError("outage")))
+        assert all(r["error"].startswith("infrastructure: ModelUnavailable") for r in rows)
+    assert all(r["retries"] == 3 for r in rows)
+
+    client = good_client()
+    stands = await study.run_stage(b, out, b / "gold-seeds", todo, runner(), client)
+
+    assert client.calls == [] and stands == rows
+    assert study.write_report(out, todo, provenance=STUB)["no_test_reasons"] == {"error: infrastructure": 2}
+    retried = await study.run_stage(b, out, b / "gold-seeds", todo, runner(), good_client(), retry_capped=True)
+    assert all(r["error"] is None and r["verified"] and r["retries"] == 4 for r in retried)
+
+
+async def test_a_retry_lost_in_a_crash_after_a_review_was_set_aside_is_still_counted(tmp_path, demo_seed):
+    b = bench(tmp_path, demo_seed)
+    out, todo = b / "study-v3" / "pilot", study.stage_patches(b, "pilot")
+    await study.run_stage(b, out, b / "gold-seeds", todo, scripted_runner(review=RuntimeError("down")), good_client())
+    # A crash on the second run: its review was set aside as .review.2.json, but its row was never written.
+    (out / TASK / "w1.review.2.json").write_text("{}", encoding="utf-8")
+
+    rows = await study.run_stage(b, out, b / "gold-seeds", todo, runner(), good_client())
+
+    assert rows[0]["retries"] == 2 and rows[1]["retries"] == 1
+
+
+async def test_a_stop_on_the_stages_last_row_is_reported(tmp_path, demo_seed):
+    b = bench(tmp_path, demo_seed, pairs=3)
+    todo = [(TASK, s, arm) for i in (1, 2, 3) for s, arm in ((f"w{i}", "wrong"), (f"c{i}", "control"))][:5]
+
+    rows = await study.run_stage(b, b / "study-v3" / "pilot", b / "gold-seeds", todo, runner(),
+                                 ScriptedClient(raises=openai.OpenAIError("outage")))
+
+    assert len(rows) == len(todo) and rows.stopped is True
+    done = await study.run_stage(b, b / "study-v3" / "pilot", b / "gold-seeds", todo[:1], runner(), good_client())
+    assert done.stopped is False
+
+
+async def test_the_cli_exits_3_when_the_stage_stopped_even_on_its_last_row(tmp_path, demo_seed, monkeypatch):
+    b = bench(tmp_path, demo_seed)
+    monkeypatch.setattr(study, "BENCH", b)
+    monkeypatch.setattr("chesterton.sandbox.contree.ConTreeSandboxRunner", lambda: runner())
+    monkeypatch.setattr("chesterton.llm.client.NemotronClient", lambda: good_client())
+
+    async def stopped_on_the_last_row(bench, out, gold_dir, todo, *args, **kw):
+        return study.StageRows([{} for _ in todo], stopped=True)
+    monkeypatch.setattr(study, "run_stage", stopped_on_the_last_row)
+
+    assert await study._main(["run", "pilot"]) == 3
+
+
+async def test_every_new_row_records_the_commit_it_ran_at_and_the_report_lists_them(tmp_path, demo_seed):
+    b = bench(tmp_path, demo_seed)
+    out, todo = b / "study-v3" / "pilot", study.stage_patches(b, "pilot")
+    head = study.provenance()["commit"]
+
+    rows = await study.run_stage(b, out, b / "gold-seeds", todo, runner(), good_client())
+
+    assert head and all(r["commit"] == head for r in rows)
+    assert study.write_report(out, todo, provenance=STUB)["commits"] == [head]
+
+
+def test_dirty_covers_src_and_scripts(monkeypatch):
+    seen = []
+
+    def fake_run(args, **kw):
+        seen.append(args)
+        out = " M scripts/study_v3.py\n" if args[1] == "status" else "abc1234\n"
+        return study.subprocess.CompletedProcess(args, 0, out, "")
+    monkeypatch.setattr(study.subprocess, "run", fake_run)
+
+    p = study.provenance()
+
+    assert ["git", "status", "--porcelain", "--", "src/", "scripts/"] in seen
+    assert p["dirty"] is True
 
 
 async def test_the_gold_check_runs_exactly_review_studys_command(demo_seed):

@@ -275,28 +275,42 @@ async def gold_check(pool: SandboxPool, gold_seed: SeedRecord, test_path: str, t
         files={f"{gold_seed.workdir}/{test_path}": test_src}, timeout=300.0,
     )
     if result.error is not None:
-        raise GoldSandboxError(f"the gold check's sandbox operation failed: {result.error}")
+        raise GoldSandboxError(result.error)
     tail = "\n".join(s for s in (result.stdout, result.stderr) if s)[-GOLD_TAIL:]
     outcome = {0: "passes_on_gold", 1: "fails_on_gold"}.get(result.exit_code, "error")
     return outcome, result.exit_code, tail
 
 
-async def _row_from_review(review: dict, runner, gold: SeedRecord | None, no_gold: str) -> dict:
-    """The row's fields, including the gold check, from a parsed review.json."""
+async def _row_from_review(review: dict, runner, gold: SeedRecord | None, no_gold: str, *,
+                           gold_capped: str | None = None) -> tuple[dict, str | None]:
+    """The row's fields, including the gold check, from a parsed review.json.
+
+    Returns the fields and, when the gold check's sandbox operation failed,
+    that failure. The review's fields are kept either way: a failed gold
+    operation never erases a verified test (Amendment 3, item 2). With
+    `gold_capped` (the last op error, once the gold check has failed on its
+    first attempt and 3 retries), no gold check runs and the outcome is error.
+    """
     fields, path, source = _fields_from_review(review)
-    outcome, code, tail, gold_s = None, None, None, 0.0
+    outcome, code, tail, gold_s, failure = None, None, None, 0.0, None
     if fields["verified"]:
-        if gold is None:
+        if gold_capped is not None:
+            outcome, tail = "error", gold_capped[-GOLD_TAIL:]
+            fields["gold_capped"] = True
+        elif gold is None:
             outcome, tail = "error", no_gold[-GOLD_TAIL:]
         else:
             started = time.perf_counter()
-            outcome, code, tail = await gold_check(SandboxPool(runner, op_budget=1), gold, path, source)
+            try:
+                outcome, code, tail = await gold_check(SandboxPool(runner, op_budget=1), gold, path, source)
+            except GoldSandboxError as exc:
+                failure = str(exc)[:300]
             gold_s = round(time.perf_counter() - started, 3)
-            fields["ops"] += 1
+            fields["ops"] += 1  # the op was issued, whether or not it succeeded
     # Amendment 2: the patch's wall time includes its gold check.
     fields |= {"gold": outcome, "gold_exit": code, "gold_tail": tail, "gold_s": gold_s,
                "wall_s": round(fields["review_wall_s"] + gold_s, 3)}
-    return fields
+    return fields, failure
 
 
 async def review_patch(bench: Path, task: str, stem: str, runner, client, out: Path) -> dict:
@@ -356,19 +370,61 @@ def _gold_seeds(gold_dir: Path, tasks, *, require_gold: bool, accept_missing_gol
     return seeds, why
 
 
+def _git(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True)
+
+
+class StageRows(list):
+    """A stage's rows, plus whether the stage stopped after MAX_CONSECUTIVE_ERRORS errors.
+
+    `stopped` is set even when the stop fell on the stage's last row, where
+    the row count alone cannot show it.
+    """
+
+    def __init__(self, rows=(), *, stopped: bool = False) -> None:
+        super().__init__(rows)
+        self.stopped = stopped
+
+
+#: The error prefix of a gold check whose sandbox operation failed (Amendment 3, item 2).
+GOLD_INFRA = "infrastructure: gold check: "
+
+
+def _commit() -> str | None:
+    """The short SHA of HEAD, recorded on every new row (Amendment 3, item 5)."""
+    result = _git("rev-parse", "--short", "HEAD")
+    return result.stdout.strip() or None if result.returncode == 0 else None
+
+
+def _raise_capped(prior: dict | None, review_path: Path) -> bool:
+    """Amendment 3, item 1: a review that raised on its first attempt and 3 retries stands.
+
+    A raised review's row error is "infrastructure: <Type>: <msg>" and leaves
+    no review.json. A flagged review's error shares the prefix, but it never
+    reaches MAX_INFRA_RETRIES as an error row (at the cap it stands, with
+    error None), and a gold-check error keeps its review.json.
+    """
+    return (prior is not None and prior["retries"] >= MAX_INFRA_RETRIES
+            and (prior["error"] or "").startswith("infrastructure: ")
+            and not prior["error"].startswith(GOLD_INFRA) and not review_path.exists())
+
+
 async def run_stage(bench: Path, out: Path, gold_dir: Path, todo, runner, client, *,
                     require_gold: bool = True, accept_missing_gold: bool = False,
-                    retry_other: bool = False) -> list[dict]:
+                    retry_other: bool = False, retry_capped: bool = False) -> StageRows:
     """Review each patch in `todo` that has no finished row, and gold-check its verified test.
 
-    Returns the rows so far. Fewer rows than `todo` means the stage stopped
-    after MAX_CONSECUTIVE_ERRORS consecutive errors.
+    Returns the rows so far, with `stopped` set when the stage stopped after
+    MAX_CONSECUTIVE_ERRORS consecutive errors. `retry_capped` retries rows
+    that Amendment 3's caps would leave standing (a review that keeps
+    raising, a gold check that keeps failing).
     """
     tasks = sorted({task for task, _, _ in todo})
     golds, no_gold = _gold_seeds(gold_dir, tasks, require_gold=require_gold,
                                  accept_missing_gold=accept_missing_gold)
     started, n = time.perf_counter(), len(todo)
-    rows: list[dict] = []
+    commit = _commit()
+    rows = StageRows()
     tally = Counter()
     consecutive = 0
     for i, (task, stem, arm) in enumerate(todo, 1):
@@ -386,6 +442,18 @@ async def run_stage(bench: Path, out: Path, gold_dir: Path, todo, runner, client
             tally["skipped"] += 1
             _say(f"[{i}/{n}] {task}/{stem} ({arm}): skipped, {prior['error']} (retry with --retry-other)")
             continue
+        if not retry_capped and _raise_capped(prior, review_path):
+            rows.append(prior)  # it stands as an error: listed, and no test in the yield
+            tally["skipped"] += 1
+            _say(f"[{i}/{n}] {task}/{stem} ({arm}): stands after {prior['retries']} retries, "
+                 f"{prior['error']} (retry with --retry-capped)")
+            continue
+        # Amendment 3, item 2: a gold check that failed on its first attempt
+        # and 3 retries is not run again; its last op error is its tail.
+        gold_capped = None
+        if (not retry_capped and prior is not None and prior["retries"] >= MAX_INFRA_RETRIES
+                and (prior["error"] or "").startswith(GOLD_INFRA)):
+            gold_capped = prior["error"][len(GOLD_INFRA):]
 
         review = None
         history = list(prior.get("history") or []) + [prior["error"]] if prior else []
@@ -394,10 +462,13 @@ async def run_stage(bench: Path, out: Path, gold_dir: Path, todo, runner, client
             if review is None:
                 _set_aside(review_path, task_dir, stem, "corrupt")
                 history.append("corrupt review.json")
-        # Counted from the reviews set aside when row.json is gone, so a lost
-        # row cannot reset the cap.
-        retries = prior["retries"] + 1 if prior else _archived(task_dir, stem)
-        row = {"task": task, "patch": stem, "arm": arm, "retries": retries, "history": history}
+        if gold_capped is not None:
+            retries = prior["retries"]  # no new attempt is made
+        else:
+            # Never fewer than the reviews already set aside, so a crash between
+            # setting one aside and writing its row cannot lose a retry.
+            retries = max(prior["retries"] + 1 if prior else 0, _archived(task_dir, stem))
+        row = {"task": task, "patch": stem, "arm": arm, "retries": retries, "history": history, "commit": commit}
         try:
             if review is None:
                 review = await review_patch(bench, task, stem, runner, client, task_dir)
@@ -408,8 +479,11 @@ async def run_stage(bench: Path, out: Path, gold_dir: Path, todo, runner, client
             else:
                 # A completed review is never rerun (spec §17): a crash between
                 # review.json and row.json resumes from the review on disk.
-                row |= await _row_from_review(review, runner, golds[task], no_gold[task])
-                row["error"] = None
+                fields, gold_failure = await _row_from_review(review, runner, golds[task], no_gold[task],
+                                                              gold_capped=gold_capped)
+                row |= fields
+                # A failed gold operation keeps the review's fields: the test stays verified.
+                row["error"] = f"{GOLD_INFRA}{gold_failure}" if gold_failure is not None else None
                 if reason is not None:  # Amendment 2: after 3 retries the last review stands
                     row |= {"infra_capped": True, "infra_reason": reason}
         except INFRASTRUCTURE as exc:  # recorded and retried on the next run
@@ -426,6 +500,7 @@ async def run_stage(bench: Path, out: Path, gold_dir: Path, todo, runner, client
         if consecutive >= MAX_CONSECUTIVE_ERRORS:
             _say(f"stopping the stage: {consecutive} consecutive errors (Amendment 2, item 1); "
                  f"the last was {row['error']}")
+            rows.stopped = True
             break
     _say(f"stage summary: done {tally['done'] + tally['before']}, errors {tally['errors']}, "
          f"retried {tally['retried']}, skipped {tally['skipped']}, wall {time.perf_counter() - started:.0f}s "
@@ -434,15 +509,12 @@ async def run_stage(bench: Path, out: Path, gold_dir: Path, todo, runner, client
 
 
 def provenance() -> dict:
-    """Amendment 2, item 8: where a report came from."""
-    def git(*args: str) -> subprocess.CompletedProcess:
-        return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True)
-
+    """Amendment 2, item 8, and Amendment 3, item 5: where a report came from."""
     from chesterton.llm import client as llm
 
-    commit = git("rev-parse", "--short", "HEAD")
-    status = git("status", "--porcelain", "--", "src/")
-    diff = git("diff", "--quiet", REGISTRATION, "--", *PIPELINE)
+    commit = _git("rev-parse", "--short", "HEAD")
+    status = _git("status", "--porcelain", "--", "src/", "scripts/")
+    diff = _git("diff", "--quiet", REGISTRATION, "--", *PIPELINE)
     return {
         "commit": commit.stdout.strip() if commit.returncode == 0 else None,
         "dirty": bool(status.stdout.strip()) if status.returncode == 0 else None,
@@ -526,6 +598,8 @@ async def _main(argv: list[str]) -> int:
     run.add_argument("--accept-missing-gold", action="store_true",
                      help="start although a task has only a recorded seed-build failure")
     run.add_argument("--retry-other", action="store_true", help="also retry rows that failed with an unknown error")
+    run.add_argument("--retry-capped", action="store_true",
+                     help="also retry a review that kept raising, or a gold check that kept failing, past the cap")
     rep = sub.add_parser("report")
     rep.add_argument("stage", choices=["pilot", "main"])
     bud = sub.add_parser("budget")
@@ -588,10 +662,9 @@ async def _main(argv: list[str]) -> int:
         _say(f"{args.stage}: {len(todo)} patches")
         rows = await run_stage(BENCH, BENCH / "study-v3" / args.stage, BENCH / "gold-seeds", todo, runner,
                                NemotronClient(), accept_missing_gold=args.accept_missing_gold,
-                               retry_other=args.retry_other)
-        if len(rows) < len(todo):
-            return 3  # stopped by the circuit breaker
-        return 0
+                               retry_other=args.retry_other, retry_capped=args.retry_capped)
+        # Stopped by the circuit breaker, even if the stop fell on the last row.
+        return 3 if rows.stopped else 0
     finally:
         await runner.aclose()
 
