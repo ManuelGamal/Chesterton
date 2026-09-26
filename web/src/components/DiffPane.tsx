@@ -52,14 +52,23 @@ export function DiffPane({ lines, bundle, state, selected, onSelectLine, reduced
   });
   const selectedFirst = selected === null ? -1 : lines.findIndex((line) => within(selected, line.file, line.new));
 
+  const rootRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    selectedRef.current?.scrollIntoView?.({ block: "center", behavior: reduced ? "auto" : "smooth" });
+    const line = selectedRef.current;
+    const box = rootRef.current?.parentElement;
+    if (!line || !box) return;
+    if (box.scrollHeight <= box.clientHeight) return;
+    if (!["auto", "scroll"].includes(getComputedStyle(box).overflowY)) return;
+    box.scrollTo?.({
+      top: line.offsetTop - box.offsetTop - box.clientHeight / 2 + line.clientHeight / 2,
+      behavior: reduced ? "auto" : "smooth",
+    });
     // Only when another change is selected, not on every replay tick.
   }, [selected?.id]);
 
   return (
-    <div className="font-mono text-[15px] leading-[1.6]" role="region" aria-label="The pull request's diff">
+    <div ref={rootRef} className="font-mono text-[15px] leading-[1.6]" role="region" aria-label="The pull request's diff">
       {lines.map((line, i) => {
         if (line.kind === "file") {
           return <div key={i} className="border-y border-border bg-card px-3 py-1 text-muted-foreground">{line.file}</div>;
@@ -98,7 +107,7 @@ export function DiffPane({ lines, bundle, state, selected, onSelectLine, reduced
             )}
             {undefended && firstOf.get(undefended) === i && (
               <span className="ml-6 select-none whitespace-nowrap font-sans text-[13px] text-muted-foreground">
-                the tests would not miss this hunk
+                the tests still pass without this hunk
               </span>
             )}
           </div>

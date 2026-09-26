@@ -48,36 +48,57 @@ describe("DiffPane", () => {
     expect(screen.queryByRole("button", { name: "Show the changes on line 9" })).not.toBeInTheDocument();
   });
 
-  it("labels the hunk the tests would not miss, once, when ddmin shows", () => {
+  it("labels the hunk the tests still pass without, once, when ddmin shows", () => {
     const { rerender } = pane({ state: stateAt(golden, 0) });
-    expect(screen.queryByText("the tests would not miss this hunk")).not.toBeInTheDocument();
+    expect(screen.queryByText("the tests still pass without this hunk")).not.toBeInTheDocument();
     rerender(<DiffPane lines={LINES} bundle={golden} state={end} selected={null} onSelectLine={() => {}} />);
-    expect(screen.getAllByText("the tests would not miss this hunk")).toHaveLength(1);
+    expect(screen.getAllByText("the tests still pass without this hunk")).toHaveLength(1);
   });
 
   describe("scrolling to the selected change", () => {
-    const scroll = vi.fn();
+    const scrollTo = vi.fn();
+
+    function mountThenSelect(overflowing: boolean, props: Partial<Parameters<typeof DiffPane>[0]> = {}) {
+      const { container, rerender } = render(
+        <div style={{ overflowY: "auto" }}>
+          <DiffPane lines={LINES} bundle={golden} state={end} selected={null} onSelectLine={() => {}} {...props} />
+        </div>,
+      );
+      const box = container.firstElementChild as HTMLElement;
+      Object.defineProperty(box, "scrollHeight", { value: overflowing ? 1000 : 200, configurable: true });
+      Object.defineProperty(box, "clientHeight", { value: 200, configurable: true });
+      box.scrollTo = scrollTo;
+      rerender(
+        <div style={{ overflowY: "auto" }}>
+          <DiffPane lines={LINES} bundle={golden} state={end} selected={golden.mutants[0]} onSelectLine={() => {}} {...props} />
+        </div>,
+      );
+      return box;
+    }
+
     beforeEach(() => {
-      scroll.mockClear();
-      Element.prototype.scrollIntoView = scroll;
-    });
-    afterEach(() => {
-      delete (Element.prototype as Partial<Element>).scrollIntoView;
+      scrollTo.mockClear();
     });
 
-    it("centres the selected change's first line, smoothly", () => {
-      pane({ selected: golden.mutants[0] });
-      expect(scroll).toHaveBeenCalledWith({ block: "center", behavior: "smooth" });
-      expect(scroll.mock.contexts[0]).toHaveTextContent("if not amount:");
+    it("scrolls only its own scrollable ancestor, smoothly", () => {
+      mountThenSelect(true);
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+      expect(scrollTo.mock.calls[0][0]).toMatchObject({ behavior: "smooth" });
     });
 
     it("jumps without smoothing under reduced motion", () => {
-      pane({ selected: golden.mutants[0], reduced: true });
-      expect(scroll).toHaveBeenCalledWith({ block: "center", behavior: "auto" });
+      mountThenSelect(true, { reduced: true });
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+      expect(scrollTo.mock.calls[0][0]).toMatchObject({ behavior: "auto" });
+    });
+
+    it("does nothing when the box does not overflow", () => {
+      mountThenSelect(false);
+      expect(scrollTo).not.toHaveBeenCalled();
     });
   });
 
-  it("does not throw where scrollIntoView is missing", () => {
+  it("does not throw where scrollTo is missing", () => {
     expect(() => pane({ selected: golden.mutants[0] })).not.toThrow();
   });
 });
