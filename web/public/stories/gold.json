@@ -4,12 +4,13 @@
   "tab": "The correct fix",
   "title": "The reference fix: well defended, and a quiet review.",
   "system": "matplotlib's developers (the merged fix)",
+  "verdict": "The fix matplotlib's developers merged is well tested: the tests caught 5 of the 6 changes Chesterton made to its lines, and Nemotron judged the one they missed worth a look, not a headline.",
   "pr_title": "[Bug]: set_visible() not working for 3d projection",
   "repo": "matplotlib/matplotlib",
   "task": "matplotlib-23314",
   "submission": "The SWE-bench reference fix",
   "utboost": "correct",
-  "chesterton_commit": "0733141",
+  "chesterton_commit": "d681dad",
   "recorded": "2026-09-19T19:45:50+00:00"
  },
  "patch": {
@@ -219,7 +220,8 @@
     "category": "safety",
     "confident": true,
     "explanation": "The mutant replaces `not self.get_visible()` with `self.get_visible() is False`, making the early return happen only when get_visible() is exactly False. If get_visible() ever returns another falsy value (e.g., 0, None), the mutant would draw when the original would skip, changing observable behavior. The existing tests all use proper boolean visibility, so they do not catch this difference.",
-    "agreement": 2
+    "agreement": 2,
+    "mutant_id": "m4"
    }
   ],
   "dismissed": [],

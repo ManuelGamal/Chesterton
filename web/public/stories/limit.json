@@ -1,15 +1,16 @@
 {
  "meta": {
   "id": "limit",
-  "tab": "The honest limit",
-  "title": "A verified test can still encode the agent's bug.",
+  "tab": "Checking our own tests",
+  "title": "Checking our own tests: a verified test can still lock in the agent's bug.",
   "system": "Amazon Q Developer Agent",
+  "verdict": "In our 13-patch study, half of Chesterton's first verified tests (5 of 10) locked in the agent's bug. One rule, test through the public API, cut that to 1 in 9. This is the one that still slips through. We catch it by running the test on the correct fix, which SWE-bench provides and a new PR does not.",
   "pr_title": "matplotlib__matplotlib-23314: 92beef201cfd",
   "repo": "matplotlib/matplotlib",
   "task": "bm-matplotlib-matplotlib-23314-92beef201cfd",
   "submission": "verified/20241202_amazon-q-developer-agent-20241202-dev",
   "utboost": "wrong",
-  "chesterton_commit": "0733141",
+  "chesterton_commit": "d681dad",
   "recorded": "2026-09-20T16:08:04+00:00"
  },
  "patch": {
@@ -340,7 +341,8 @@
     "category": "safety",
     "confident": true,
     "explanation": "The mutant flips the logic of self._axis3don assignment when b=True, changing the observable state of the 3D axis. The existing test only checks the invisible case (b=False), so this behavioral change is not caught by the test suite.",
-    "agreement": 3
+    "agreement": 3,
+    "mutant_id": "m7"
    }
   ],
   "worth_a_look": [
@@ -361,7 +363,8 @@
     "category": "functional",
     "confident": true,
     "explanation": "The mutant always calls super().set_visible(True) ignoring the parameter b, so when b is False the visibility behavior differs from the original. This change is observable (affects axis rendering) but not caught by the existing test, which apparently only invokes the method with b=True.",
-    "agreement": 2
+    "agreement": 2,
+    "mutant_id": "m5"
    },
    {
     "id": "w1",
@@ -380,7 +383,8 @@
     "category": "functional",
     "confident": true,
     "explanation": "The mutant omits the call to artist.set_visible(b), so child artists' visibility is not updated. The test suite runs this code but does not assert on child visibility, so the behavioral change is not caught.",
-    "agreement": 2
+    "agreement": 2,
+    "mutant_id": "m10"
    },
    {
     "id": "w2",
@@ -397,7 +401,8 @@
     "category": "functional",
     "confident": true,
     "explanation": "The mutation replaces the set_visible method body with a pass, making the visibility setter a no\u2011op. If the method is called, the artist's visibility will not change, which is an observable behavior not exercised by the existing test suite.",
-    "agreement": null
+    "agreement": null,
+    "mutant_id": "m0"
    },
    {
     "id": "w3",
@@ -414,7 +419,8 @@
     "category": "functional",
     "confident": true,
     "explanation": "The inserted `if b: pass` statement makes the function's docstring no longer the first statement, so __doc__ becomes None. This change is observable (e.g., help() or Sphinx) but the test suite does not check the docstring, hence it is an untested invariant.",
-    "agreement": null
+    "agreement": null,
+    "mutant_id": "m2"
    },
    {
     "id": "w4",
@@ -431,7 +437,8 @@
     "category": "functional",
     "confident": true,
     "explanation": "The mutant makes set_visible ignore its argument, so the function no longer affects the artist's visibility. Since the test suite passes, the change in observable behavior is not exercised by any test.",
-    "agreement": null
+    "agreement": null,
+    "mutant_id": "m3"
    },
    {
     "id": "w5",
@@ -450,7 +457,8 @@
     "category": "functional",
     "confident": true,
     "explanation": "The mutant forces _axis3don to equal b, whereas the original preserves the previous _axis3don when b=True. This can change internal state and later rendering, but the existing test only checks invisibility and does not exercise the case where visibility is turned back on.",
-    "agreement": null
+    "agreement": null,
+    "mutant_id": "m9"
    },
    {
     "id": "w6",
@@ -469,7 +477,8 @@
     "category": "functional",
     "confident": false,
     "explanation": "The mutant ignores the visibility flag\u202fb and always sets child artists to visible, which can change observable behavior when b is False. The existing test does not check child visibility under that condition, so the change passes undetected.",
-    "agreement": null
+    "agreement": null,
+    "mutant_id": "m11"
    },
    {
     "id": "w7",
@@ -488,7 +497,8 @@
     "category": "functional",
     "confident": true,
     "explanation": "The mutant changes the stale flag from True to False after setting visibility, which alters when a redraw is triggered. The existing test does not verify the stale flag or resulting draw behavior, so this change is not caught by the test suite.",
-    "agreement": null
+    "agreement": null,
+    "mutant_id": "m14"
    },
    {
     "id": "w8",
@@ -507,7 +517,8 @@
     "category": "functional",
     "confident": false,
     "explanation": "Removing the assignment to self.stale may prevent the axes from being marked as needing a redraw after visibility changes, which could affect rendering. The existing test does not catch this difference, so the change alters observable behavior that is not currently tested.",
-    "agreement": null
+    "agreement": null,
+    "mutant_id": "m16"
    },
    {
     "id": "w9",
@@ -526,7 +537,8 @@
     "category": "functional",
     "confident": true,
     "explanation": "The mutant toggles self.stale instead of always setting it to True, changing the program's internal state that can affect later redraw decisions. The existing test does not check the stale flag, so this behavioral change is not caught.",
-    "agreement": null
+    "agreement": null,
+    "mutant_id": "m17"
    }
   ],
   "dismissed": [
@@ -547,7 +559,8 @@
     "category": null,
     "confident": true,
     "explanation": "The mutant replaces `b` with `b and True`, which is logically identical for any boolean value of b. Since the parameter is intended to be a bool and all existing calls pass booleans, the mutant's behavior matches the original for every reachable input.",
-    "agreement": null
+    "agreement": null,
+    "mutant_id": "m6"
    },
    {
     "id": "d1",
@@ -566,7 +579,8 @@
     "category": null,
     "confident": true,
     "explanation": "The added guard only skips calling set_visible when the artist already has the target visibility; this does not change any observable state because setting visibility to the same value has no side\u2011effects, and self.stale is set unconditionally afterward.",
-    "agreement": null
+    "agreement": null,
+    "mutant_id": "m12"
    },
    {
     "id": "d2",
@@ -585,7 +599,8 @@
     "category": null,
     "confident": false,
     "explanation": "The mutant inserts an extra set_visible call that likely has no observable effect when self._children is empty in the tested scenario, rendering the change dead code.",
-    "agreement": null
+    "agreement": null,
+    "mutant_id": "m13"
    },
    {
     "id": "d3",
@@ -604,7 +619,8 @@
     "category": null,
     "confident": true,
     "explanation": "The mutant changes self.stale from the boolean True to the integer 1, but the attribute is used only as a truthy flag (e.g., in conditional checks). Both values evaluate to True, so the program's observable behavior remains unchanged for all reachable inputs.",
-    "agreement": null
+    "agreement": null,
+    "mutant_id": "m15"
    }
   ],
   "model_calls": 21

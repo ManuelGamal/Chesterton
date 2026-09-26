@@ -7,6 +7,8 @@ real run. Whole modules never enter a bundle; the UI gets windows.
 
 from __future__ import annotations
 
+import difflib
+
 from chesterton.diffing.parse import split_by_file
 from chesterton.execute.mutants import MutantResult
 from chesterton.filters import is_mutable_source
@@ -68,6 +70,46 @@ def _finding(prefix: str, index: int, item: dict) -> dict:
     }
 
 
+def _code(window: str) -> list[str]:
+    """The code of an exporter window (" 1157 |     code" per line), numbers dropped."""
+    return [line.split(" | ", 1)[1] if " | " in line else line for line in window.split("\n")]
+
+
+def _change(before: str, after: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """(removed lines, added lines) between two windows, by a line diff of their code."""
+    a, b = _code(before), _code(after)
+    removed: list[str] = []
+    added: list[str] = []
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(a=a, b=b, autojunk=False).get_opcodes():
+        if tag != "equal":
+            removed += a[i1:i2]
+            added += b[j1:j2]
+    return tuple(removed), tuple(added)
+
+
+def link_findings(findings: list[dict], mutants: list[dict]) -> None:
+    """Give each finding the id of the surviving mutant it describes, one to one.
+
+    A finding and its mutant share file and line range, and make the same
+    change; their windows differ only in how much context they carry. Two
+    mutants can make the identical change, so each finding claims its own.
+    """
+    claimed: set[str] = set()
+    for f in findings:
+        change = _change(f["original"], f["mutated"])
+        match = next(
+            (m for m in mutants
+             if m["id"] not in claimed and m["verdict"] == "survived"
+             and (m["file"], m["start_line"], m["end_line"]) == (f["file"], f["start_line"], f["end_line"])
+             and _change(m["before"], m["after"]) == change),
+            None,
+        )
+        if match is None:
+            raise ValueError(f"finding {f['id']} matches no surviving mutant")
+        claimed.add(match["id"])
+        f["mutant_id"] = match["id"]
+
+
 def _regression(review: dict, headline: list[dict], gold: str | None) -> dict | None:
     reg = review.get("regression")
     if reg is None:
@@ -119,12 +161,15 @@ def build_bundle(
 
     triage = review["triage"]
     headline = [_finding("h", i, x) for i, x in enumerate(triage["headline"])]
+    worth = [_finding("w", i, x) for i, x in enumerate(triage["worth_a_look"])]
+    dismissed = [_finding("d", i, x) for i, x in enumerate(triage["dismissed"])]
+    link_findings(headline + worth + dismissed, mutants)
     mutants_end = max((m["start_s"] + m["duration_s"] for m in mutants), default=0.0)
     regression = _regression(review, headline, gold)
     return {
         "meta": {
             "id": story["id"], "tab": story["tab"], "title": story["title"],
-            "system": story["system"],
+            "system": story["system"], "verdict": story["verdict"],
             "pr_title": seed.pr.title, "repo": f"{seed.pr.owner}/{seed.pr.repo}",
             "task": seed.slug, "submission": submission, "utboost": story["utboost"],
             "chesterton_commit": commit, "recorded": seed.built_at,
@@ -137,8 +182,8 @@ def build_bundle(
         "ddmin": {"undefended": undefended, "probes": surface.get("probes", 0)},
         "triage": {
             "headline": headline,
-            "worth_a_look": [_finding("w", i, x) for i, x in enumerate(triage["worth_a_look"])],
-            "dismissed": [_finding("d", i, x) for i, x in enumerate(triage["dismissed"])],
+            "worth_a_look": worth,
+            "dismissed": dismissed,
             "model_calls": triage["model_calls"],
         },
         "regression": regression,

@@ -12,7 +12,7 @@ export interface Finding {
   id: string; file: string; start_line: number; end_line: number; operator: string;
   rationale: string; original: string; mutated: string; diff: string; tests: string[];
   label: string; category: string | null; confident: boolean; explanation: string;
-  agreement: number | null;
+  agreement: number | null; mutant_id: string;
 }
 
 export interface Regression {
@@ -24,7 +24,7 @@ export interface Regression {
 
 export interface Bundle {
   meta: {
-    id: string; tab: string; title: string; system: string; pr_title: string; repo: string; task: string;
+    id: string; tab: string; title: string; system: string; verdict: string; pr_title: string; repo: string; task: string;
     submission: string; utboost: "wrong" | "correct"; chesterton_commit: string; recorded: string;
   };
   patch: { diff: string; dropped_files: string[] };
@@ -64,7 +64,7 @@ const MUTANT_KEYS = [
 const FINDING_KEYS = [
   "id", "file", "start_line", "end_line", "operator",
   "rationale", "original", "mutated", "diff", "tests",
-  "label", "category", "confident", "explanation", "agreement",
+  "label", "category", "confident", "explanation", "agreement", "mutant_id",
 ] as const;
 
 const REGRESSION_KEYS = [
@@ -74,7 +74,7 @@ const REGRESSION_KEYS = [
 ] as const;
 
 const META_KEYS = [
-  "id", "tab", "title", "system", "pr_title", "repo", "task",
+  "id", "tab", "title", "system", "verdict", "pr_title", "repo", "task",
   "submission", "utboost", "chesterton_commit", "recorded",
 ] as const;
 

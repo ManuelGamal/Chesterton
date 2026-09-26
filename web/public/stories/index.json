@@ -5,12 +5,12 @@
    "tab": "Wrong patch, caught"
   },
   {
-   "id": "limit",
-   "tab": "The honest limit"
-  },
-  {
    "id": "gold",
    "tab": "The correct fix"
+  },
+  {
+   "id": "limit",
+   "tab": "Checking our own tests"
   }
  ]
 }

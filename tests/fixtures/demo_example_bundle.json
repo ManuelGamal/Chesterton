@@ -4,6 +4,7 @@
     "tab": "Wrong patch, caught",
     "title": "Demo story",
     "system": "Test System",
+    "verdict": "The tests never check the `amount` guard.",
     "pr_title": "Require a non-zero amount",
     "repo": "acme/pay",
     "task": "demo",
@@ -111,7 +112,8 @@
         "category": "safety",
         "confident": true,
         "explanation": "the guard is never exercised",
-        "agreement": 3
+        "agreement": 3,
+        "mutant_id": "m0"
       }
     ],
     "worth_a_look": [],

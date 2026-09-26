@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from chesterton.demo.export import CONCURRENCY, build_bundle, schedule
+from chesterton.demo.export import CONCURRENCY, build_bundle, link_findings, schedule
 from chesterton.review import review_run
 from chesterton.sandbox.fake import FakeSandboxRunner
 from chesterton.sandbox.protocol import RunResult
@@ -16,7 +16,7 @@ from conftest import DEMO_DIFF, HEAD_PAY, NO_GUARD, ScriptedClient, a_survivor, 
 
 GOLDEN = Path(__file__).parent / "fixtures" / "demo_example_bundle.json"
 STORY = {"id": "hero", "tab": "Wrong patch, caught", "title": "Demo story", "utboost": "wrong",
-        "system": "Test System"}
+         "system": "Test System", "verdict": "The tests never check the `amount` guard."}
 GOOD = "```python\nimport pytest\nfrom pay import charge\n\n\ndef test_zero():\n    with pytest.raises(ValueError):\n        charge(0)\n```"
 # The conftest diff has no `diff --git` headers; real PR diffs do, and the
 # exporter splits files on them.
@@ -170,9 +170,9 @@ def test_a_story_whose_inputs_are_missing_is_skipped_not_faked(tmp_path, demo_se
               "regression": None, "ops_used": 0}
     (tmp_path / "review.json").write_text(json.dumps(review), encoding="utf-8")
     stories = [
-        {"id": "present", "tab": "A", "title": "t", "utboost": "wrong", "system": "System A",
+        {"id": "present", "tab": "A", "title": "t", "utboost": "wrong", "system": "System A", "verdict": "v",
          "seed": "seed.json", "run": "run.json", "review": "review.json", "gold": None, "submission": "x"},
-        {"id": "absent", "tab": "B", "title": "t", "utboost": "correct", "system": "System B",
+        {"id": "absent", "tab": "B", "title": "t", "utboost": "correct", "system": "System B", "verdict": "v",
          "seed": "nope.json", "run": "nope.json", "review": "nope.json", "gold": None, "submission": "y"},
     ]
     out = tmp_path / "out"
@@ -199,3 +199,88 @@ def test_a_gold_stem_missing_from_the_summary_fails_loudly(tmp_path):
 
     with pytest.raises(KeyError, match="absent not in summary.json"):
         export_demo._gold(tmp_path, ("summary.json", "absent"))
+
+
+async def test_the_bundle_carries_the_story_verdict(demo_seed):
+    bundle = await a_bundle(demo_seed)
+
+    assert bundle["meta"]["verdict"] == "The tests never check the `amount` guard."
+
+
+async def test_every_finding_links_to_its_surviving_mutant(demo_seed):
+    bundle = await a_bundle(demo_seed)
+
+    [headline] = bundle["triage"]["headline"]
+    assert headline["mutant_id"] == "m0"
+    assert bundle["mutants"][0]["verdict"] == "survived"
+
+
+WINDOW_BEFORE = "    1 | def charge(amount):\n    2 |     if not amount:\n    3 |         raise ValueError\n    4 |     return amount"
+WINDOW_AFTER = "    1 | def charge(amount):\n    2 |     return amount"
+
+
+def _mutant(mid, verdict="survived"):
+    return {"id": mid, "file": "pay.py", "start_line": 2, "end_line": 3, "verdict": verdict,
+            "before": WINDOW_BEFORE, "after": WINDOW_AFTER}
+
+
+def _finding(fid):
+    # A finding's windows are wider than a mutant's: the match compares changed lines only.
+    return {"id": fid, "file": "pay.py", "start_line": 2, "end_line": 3,
+            "original": "    0 | import os\n" + WINDOW_BEFORE, "mutated": "    0 | import os\n" + WINDOW_AFTER}
+
+
+def test_two_findings_with_the_same_change_claim_two_mutants():
+    findings = [_finding("h0"), _finding("w0")]
+
+    link_findings(findings, [_mutant("m0"), _mutant("m1"), _mutant("m2", verdict="killed")])
+
+    assert [f["mutant_id"] for f in findings] == ["m0", "m1"]
+
+
+def test_a_finding_with_no_surviving_mutant_fails_loudly():
+    with pytest.raises(ValueError, match="h0 matches no surviving mutant"):
+        link_findings([_finding("h0")], [_mutant("m0", verdict="killed")])
+
+
+def test_the_stories_run_hero_then_the_correct_fix_then_our_own_tests():
+    assert [s["id"] for s in export_demo.STORIES] == ["hero", "gold", "limit"]
+    assert all(s["verdict"] for s in export_demo.STORIES)
+    limit = next(s for s in export_demo.STORIES if s["id"] == "limit")
+    assert limit["tab"] == "Checking our own tests"
+
+
+STORIES_DIR = Path(__file__).resolve().parents[1] / "web" / "public" / "stories"
+
+
+@pytest.mark.parametrize("story", ["hero", "gold", "limit"])
+def test_every_committed_finding_links_to_a_distinct_survivor(story):
+    bundle = json.loads((STORIES_DIR / f"{story}.json").read_text(encoding="utf-8"))
+    by_id = {m["id"]: m for m in bundle["mutants"]}
+    findings = [f for bucket in ("headline", "worth_a_look", "dismissed") for f in bundle["triage"][bucket]]
+
+    ids = [f["mutant_id"] for f in findings]
+    assert len(ids) == len(set(ids))
+    assert all(by_id[i]["verdict"] == "survived" for i in ids)
+
+
+def test_the_committed_correct_fix_verdict_matches_its_bundle():
+    gold = json.loads((STORIES_DIR / "gold.json").read_text(encoding="utf-8"))
+    caught = sum(1 for m in gold["mutants"] if m["verdict"] == "killed")
+
+    assert f"caught {caught} of the {len(gold['mutants'])} changes" in gold["meta"]["verdict"]
+
+
+def test_the_limit_verdict_matches_the_two_review_studies():
+    root = Path(__file__).resolve().parents[1]
+    first, second = root / "review-study" / "summary.json", root / "review-study-2" / "summary.json"
+    if not (first.exists() and second.exists()):
+        pytest.skip("the review-study data directories are local only")
+    def fails(path):
+        rows = [r for r in json.loads(path.read_text(encoding="utf-8")) if r["verified"]]
+        return sum(1 for r in rows if r["gold"] == "fails_on_gold"), len(rows)
+    (f1, n1), (f2, n2) = fails(first), fails(second)
+    verdict = next(s for s in export_demo.STORIES if s["id"] == "limit")["verdict"]
+
+    assert (f1, n1, f2, n2) == (5, 10, 1, 9)
+    assert f"({f1} of {n1})" in verdict and f"{f2} in {n2}" in verdict

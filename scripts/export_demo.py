@@ -27,30 +27,41 @@ STORIES = [
     {"id": "hero", "tab": "Wrong patch, caught", "utboost": "wrong",
      "title": "An agent's fix passed SWE-bench. Here is what its tests let through.",
      "system": "Agentless 1.5 + Claude 3.5 Sonnet",
+     "verdict": ("The agent's fix passed every test, but no test checks that `set_visible(True)` "
+                 "actually shows a 3D plot. Chesterton found the gap and wrote the missing test."),
      "seed": f"benchmark-v2/seeds/{TASK}/6d83e35469d2.json",
      "run": f"benchmark-v2/runs/{TASK}/6d83e35469d2.json",
      "review": "review-study-2/6d83e35469d2.json",
      "gold": ("review-study-2/summary.json", "6d83e35469d2"),
      "submission": (SCREEN, "6d83e35469d2")},
-    {"id": "limit", "tab": "The honest limit", "utboost": "wrong",
-     "title": "A verified test can still encode the agent's bug.",
-     # This story's own submission is verified/20241202_amazon-q-developer-agent-20241202-dev
-     # (checked in web/public/stories/limit.json), not the agentless-1.5 one hero uses.
-     "system": "Amazon Q Developer Agent",
-     "seed": f"benchmark-v2/seeds/{TASK}/92beef201cfd.json",
-     "run": f"benchmark-v2/runs/{TASK}/92beef201cfd.json",
-     "review": "review-study-2/92beef201cfd.json",
-     "gold": ("review-study-2/summary.json", "92beef201cfd"),
-     "submission": (SCREEN, "92beef201cfd")},
     {"id": "gold", "tab": "The correct fix", "utboost": "correct",
      "title": "The reference fix: well defended, and a quiet review.",
      # SWE-bench's reference patch is the fix matplotlib's developers merged.
      "system": "matplotlib's developers (the merged fix)",
+     "verdict": ("The fix matplotlib's developers merged is well tested: the tests caught 5 of the 6 "
+                 "changes Chesterton made to its lines, and Nemotron judged the one they missed worth "
+                 "a look, not a headline."),
      "seed": "seeds/matplotlib-23314.json",
      "run": "runs/matplotlib-23314.json",
      "review": "review-gold/matplotlib-23314.json",
      "gold": None,
      "submission": "The SWE-bench reference fix"},
+    {"id": "limit", "tab": "Checking our own tests", "utboost": "wrong",
+     "title": "Checking our own tests: a verified test can still lock in the agent's bug.",
+     # This story's own submission is verified/20241202_amazon-q-developer-agent-20241202-dev
+     # (checked in web/public/stories/limit.json), not the agentless-1.5 one hero uses.
+     "system": "Amazon Q Developer Agent",
+     # The figures are review-study (5 of 10 fail on gold) and review-study-2 (1 of 9),
+     # spec §17; a test re-derives them when those local directories exist.
+     "verdict": ("In our 13-patch study, half of Chesterton's first verified tests (5 of 10) locked in "
+                 "the agent's bug. One rule, test through the public API, cut that to 1 in 9. This is "
+                 "the one that still slips through. We catch it by running the test on the correct fix, "
+                 "which SWE-bench provides and a new PR does not."),
+     "seed": f"benchmark-v2/seeds/{TASK}/92beef201cfd.json",
+     "run": f"benchmark-v2/runs/{TASK}/92beef201cfd.json",
+     "review": "review-study-2/92beef201cfd.json",
+     "gold": ("review-study-2/summary.json", "92beef201cfd"),
+     "submission": (SCREEN, "92beef201cfd")},
 ]
 
 

@@ -35,6 +35,18 @@ describe("bundle", () => {
     copy.regression = null;
     expect(() => assertBundle(copy)).not.toThrow();
   });
+
+  it("rejects a finding with no mutant link", () => {
+    const copy = structuredClone(golden);
+    delete copy.triage.headline[0].mutant_id;
+    expect(() => assertBundle(copy)).toThrow(/mutant_id/);
+  });
+
+  it("rejects a bundle with no verdict", () => {
+    const copy = structuredClone(golden);
+    delete copy.meta.verdict;
+    expect(() => assertBundle(copy)).toThrow(/verdict/);
+  });
 });
 
 describe("verdicts", () => {
