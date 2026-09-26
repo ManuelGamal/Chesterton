@@ -15,11 +15,11 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
-/** Replay clock. Remount (key by story) to reset. Reduced motion: no autoplay, final state. */
+/** Replay clock. Remount (key by story) to reset. Opens at the final state, not playing (spec §4). */
 export function useReplay(total: number) {
   const reduced = usePrefersReducedMotion();
-  const [t, setT] = useState(() => (reduced ? total : 0));
-  const [playing, setPlaying] = useState(() => !reduced);
+  const [t, setT] = useState(total);
+  const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(() => defaultSpeed(total));
 
   useEffect(() => {
@@ -43,6 +43,11 @@ export function useReplay(total: number) {
   return {
     t, playing, speed, reduced, setSpeed,
     play: () => {
+      // Reduced motion: nothing animates, so Replay shows the end.
+      if (reduced) {
+        setT(total);
+        return;
+      }
       if (t >= total) setT(0);
       setPlaying(true);
     },

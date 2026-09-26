@@ -1,14 +1,16 @@
 import * as Tabs from "@radix-ui/react-tabs";
 import { Info } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { assertBundle, type Bundle, type DiffLine, type Finding, type StoryIndex } from "./bundle";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { assertBundle, type Bundle, type DiffLine, type StoryIndex, type Verdict } from "./bundle";
 import { AboutDialog } from "./components/AboutDialog";
+import { AnswerCard } from "./components/AnswerCard";
 import { DiffPane } from "./components/DiffPane";
-import { FindingPanel, FindingSide } from "./components/FindingPanel";
 import { Lanes } from "./components/Lanes";
+import { MutantDetail } from "./components/MutantDetail";
 import { ReplayControls } from "./components/ReplayControls";
+import { SummaryLine } from "./components/SummaryLine";
 import { stateAt } from "./engine";
-import { labelWords, span } from "./format";
+import { mutantAtLine, mutantsInLaneOrder } from "./story";
 import { useReplay } from "./useReplay";
 
 async function fetchJson(url: string): Promise<unknown> {
@@ -59,10 +61,8 @@ export default function App() {
         </button>
       </header>
       {index.stories.map((s) => (
-        // Radix always puts the content panel itself in the tab order (tabIndex 0),
-        // for panels with no focusable content. Ours always has some (the replay
-        // controls, at least), so opt out and let Tab land on that directly.
-        <Tabs.Content key={s.id} value={s.id} tabIndex={-1} className="min-h-0 flex-1">
+        // Radix puts the panel itself in the tab order; ours always has focusable content.
+        <Tabs.Content key={s.id} value={s.id} tabIndex={-1} className="min-h-0 flex-1 overflow-auto">
           {active === s.id && <Story key={s.id} id={s.id} />}
         </Tabs.Content>
       ))}
@@ -99,22 +99,28 @@ function StoryView({ bundle, lines }: { bundle: Bundle; lines: DiffLine[] }) {
   const total = bundle.timeline.total_s;
   const clock = useReplay(total);
   const state = useMemo(() => stateAt(bundle, clock.t), [bundle, clock.t]);
-  const headline = bundle.triage.headline;
-  const [focus, setFocus] = useState<Finding | null>(null);
+  const order = useMemo(() => mutantsInLaneOrder(bundle), [bundle]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [highlight, setHighlight] = useState<Verdict | null>(null);
+  const selected = order.find((m) => m.id === selectedId) ?? null;
 
-  useEffect(() => {
-    if (state.showTriage && focus === null && headline.length > 0) setFocus(headline[0]);
-  }, [state.showTriage, focus, headline]);
+  const select = (id: string) => {
+    clock.pause();
+    setSelectedId(id);
+  };
+  const step = (dir: 1 | -1) => {
+    if (order.length === 0) return;
+    const i = selected ? order.indexOf(selected) : -1;
+    const next = i === -1 ? (dir === 1 ? 0 : order.length - 1) : Math.min(Math.max(i + dir, 0), order.length - 1);
+    select(order[next].id);
+  };
+  const selectLine = (file: string, line: number) => {
+    const m = mutantAtLine(bundle, file, line);
+    if (m) select(m.id);
+  };
 
-  const pause = clock.pause;
-  const pick = useCallback((f: Finding) => {
-    pause();
-    setFocus(f);
-  }, [pause]);
-
-  // `clock` (from useReplay) is a fresh object every render, including every animation
-  // frame during autoplay. Keep the latest handler in a ref and register the actual
-  // window listener once, so autoplay doesn't remove/re-add it up to 60 times a second.
+  // `clock` is a fresh object every render; keep the latest handler in a ref and
+  // register the window listener once.
   const onKeyRef = useRef<(e: KeyboardEvent) => void>(() => {});
   onKeyRef.current = (e: KeyboardEvent) => {
     if (document.querySelector("dialog[open]")) return;
@@ -123,20 +129,21 @@ function StoryView({ bundle, lines }: { bundle: Bundle; lines: DiffLine[] }) {
     const tag = el?.tagName ?? "";
     if (e.key === " ") {
       // Space activates a focused button, so leave it to the button.
-      if (["INPUT", "SELECT", "BUTTON", "TEXTAREA"].includes(tag)) return;
+      if (["INPUT", "SELECT", "BUTTON", "TEXTAREA", "SUMMARY"].includes(tag)) return;
       e.preventDefault();
       if (clock.playing) clock.pause();
       else clock.play();
       return;
     }
+    if (e.key === "Escape") {
+      setSelectedId(null);
+      return;
+    }
     if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-      // Arrows belong to form fields and to tab lists (the story tabs, the PR/mutant switch).
+      // Arrows belong to form fields and to tab lists.
       if (["INPUT", "SELECT", "TEXTAREA"].includes(tag)) return;
       if (el?.closest("[role=tab], [role=tablist]")) return;
-      if (!state.showTriage || headline.length === 0) return;
-      const i = focus ? headline.findIndex((f) => f.id === focus.id) : -1;
-      const next = e.key === "ArrowRight" ? Math.min(i + 1, headline.length - 1) : Math.max(i - 1, 0);
-      pick(headline[next]);
+      step(e.key === "ArrowRight" ? 1 : -1);
     }
   };
 
@@ -147,90 +154,33 @@ function StoryView({ bundle, lines }: { bundle: Bundle; lines: DiffLine[] }) {
   }, []);
 
   const c = bundle.counters;
-  const m = bundle.meta;
   return (
-    <div className="flex h-full flex-col">
-      <ReplayControls clock={clock} total={total} state={state} bundle={bundle} />
-      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-4 py-2">
-        <h1 className="text-[17px] font-semibold">{m.title}</h1>
-        <span className="min-w-0 text-[13px] text-muted-foreground">
-          {m.repo} · <span title={m.submission}>patch by {m.system}</span> · UTBoost: {m.utboost === "wrong" ? "proven wrong" : "correct"}
-        </span>
-        <span className="text-[13px] text-muted-foreground tabular md:ml-auto">
-          run totals: {c.sandbox_ops} sandboxes · {c.lightning_calls} Lightning · {c.super_calls} Super · {c.ultra_calls} Ultra · {Math.round(c.run_wall_s)} s
-        </span>
-      </div>
-      {/* Below md the columns stack and this body scrolls as one; from md up they sit side by side. */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-auto md:flex-row md:overflow-hidden">
-        <div className="flex h-[85vh] w-full min-w-0 shrink-0 flex-col border-b border-border md:h-auto md:w-[60%] md:shrink md:border-b-0 md:border-r">
-          <div className="min-h-0 flex-1 overflow-auto">
-            <DiffPane lines={lines} bundle={bundle} state={state} focus={focus} onPick={pick} reduced={clock.reduced} />
+    <div className="flex flex-col">
+      <AnswerCard bundle={bundle} reduced={clock.reduced} />
+      <section aria-labelledby="how-found" className="flex flex-col">
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-4 pt-4">
+          <h2 id="how-found" className="text-[17px] font-semibold">How Chesterton found this</h2>
+          <span className="text-[13px] text-muted-foreground tabular md:ml-auto">
+            run totals: {c.sandbox_ops} sandboxes · {c.lightning_calls} Lightning · {c.super_calls} Super · {c.ultra_calls} Ultra · {Math.round(c.run_wall_s)} s
+          </span>
+        </div>
+        <SummaryLine bundle={bundle} highlight={highlight} onHighlight={setHighlight} />
+        <ReplayControls clock={clock} total={total} state={state} bundle={bundle} />
+        <div className="flex flex-col md:h-[75vh] md:flex-row">
+          <div className="max-h-[75vh] min-w-0 overflow-auto border-b border-border md:max-h-none md:w-[60%] md:border-b-0 md:border-r">
+            <DiffPane lines={lines} bundle={bundle} state={state} selected={selected} onSelectLine={selectLine} reduced={clock.reduced} />
           </div>
-          {state.showTriage && focus && (
-            <div className="h-[42%] shrink-0 overflow-auto border-t border-border bg-card">
-              <FindingPanel finding={focus} reduced={clock.reduced} />
-            </div>
-          )}
-          {state.showTriage && !focus && headline.length === 0 && (
-            <p className="shrink-0 border-t border-border bg-card px-4 py-3 text-[14px] text-muted-foreground">
-              No headline findings: every survivor was dismissed or judged minor.
-            </p>
-          )}
+          <div className="min-w-0 overflow-auto md:w-[40%]">
+            <Lanes bundle={bundle} state={state} reduced={clock.reduced} selected={selectedId} highlight={highlight} onSelect={select} />
+            {selected ? (
+              <MutantDetail bundle={bundle} mutant={selected} reduced={clock.reduced}
+                onClose={() => setSelectedId(null)} onStep={step} />
+            ) : (
+              <p className="px-3 py-3 text-[14px] text-muted-foreground">Click a change, or a marked line in the diff, to see what it did.</p>
+            )}
+          </div>
         </div>
-        <div className="w-full min-w-0 md:w-[40%] md:overflow-auto">
-          <Lanes bundle={bundle} state={state} reduced={clock.reduced} />
-          {state.showTriage && (
-            <>
-              <p className="px-3 py-2 text-[13px] text-muted-foreground">
-                {headline.length} headline · {bundle.triage.worth_a_look.length} worth a look · {bundle.triage.dismissed.length} dismissed
-                {bundle.patch.dropped_files.length > 0 && ` · ${bundle.patch.dropped_files.length} test or scratch files not shown`}
-              </p>
-              <TriageLists bundle={bundle} focus={focus} onPick={pick} />
-              {focus && (
-                <div className="px-3 pb-4">
-                  <FindingSide storyId={m.id} finding={focus} regression={bundle.regression}
-                    showRegression={state.showRegression} />
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** "axes3d.py:1157 · untested invariant · functional" */
-function describeFinding(f: Finding): string {
-  return `${f.file.split("/").pop()}:${span(f.start_line, f.end_line)} · ${labelWords(f.label)}${f.category ? ` · ${f.category}` : ""}`;
-}
-
-function TriageLists({ bundle, focus, onPick }: { bundle: Bundle; focus: Finding | null; onPick: (f: Finding) => void }) {
-  const { worth_a_look: worth, dismissed } = bundle.triage;
-  const summary = "cursor-pointer py-1 text-muted-foreground";
-  return (
-    <div className="px-3 pb-1 text-[14px]">
-      {/* With no headline, worth-a-look is the review's whole answer, so it starts open. */}
-      <details open={bundle.triage.headline.length === 0 && worth.length > 0}>
-        <summary className={summary}>{`Worth a look (${worth.length})`}</summary>
-        <ul className="mb-2 ml-4 space-y-0.5">
-          {worth.map((f) => (
-            <li key={f.id}>
-              <button type="button" onClick={() => onPick(f)} title={f.file}
-                aria-current={focus?.id === f.id ? "true" : undefined}
-                className="cursor-pointer text-left underline-offset-2 hover:underline aria-[current=true]:text-accent">
-                {describeFinding(f)}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </details>
-      <details>
-        <summary className={summary}>{`Dismissed (${dismissed.length})`}</summary>
-        <ul className="mb-2 ml-4 space-y-0.5 text-muted-foreground">
-          {dismissed.map((f) => <li key={f.id} title={f.file}>{describeFinding(f)}</li>)}
-        </ul>
-      </details>
+      </section>
     </div>
   );
 }

@@ -15,6 +15,7 @@ export function AboutDialog({ open, onClose }: { open: boolean; onClose: () => v
       <button type="button" onClick={onClose} aria-label="Close" className="float-right cursor-pointer"><X size={18} /></button>
       <h2 className="text-lg font-semibold">How this runs on Nebius</h2>
       <ul className="mt-3 list-disc space-y-2 pl-5 text-[15px]">
+        <li>A mutant is a small deliberate change to a line the agent wrote. If every test still passes, the tests missed it.</li>
         <li>Each run forks one seed checkpoint in Nebius Token Factory Sandboxes: one sandbox per mutant, 24 at a time, each running only the tests that execute the changed code.</li>
         <li>Nemotron 3.5 Lightning proposes mutants, Nemotron 3 Super triages the survivors, and Nemotron 3 Ultra writes the regression test, all on Token Factory.</li>
         <li><b>What is live here:</b> "Ask Nemotron why" makes a real Nemotron Super call now. <b>What is replayed:</b> the sandbox runs, recorded from real runs; mutant durations are as measured.</li>

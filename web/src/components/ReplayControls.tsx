@@ -5,7 +5,7 @@ import { SPEEDS, type ReplayState } from "../engine";
 import type { useReplay } from "../useReplay";
 
 export function statusLine(state: ReplayState, bundle: Bundle): string {
-  return `${state.finished} of ${bundle.mutants.length} mutants finished · ${state.survived} survived`;
+  return `${state.finished} of ${bundle.mutants.length} changes tested · ${state.survived} missed`;
 }
 
 /** A key that only changes at quarters of `finished` (and at the end), so the status
@@ -45,7 +45,7 @@ export function ReplayControls({ clock, total, state, bundle }: Props) {
         </button>
       ) : (
         <button type="button" className={primary} onClick={clock.play}>
-          <Play size={16} aria-hidden="true" /> Play
+          <Play size={16} aria-hidden="true" /> {clock.t >= total ? "Replay" : "Play"}
         </button>
       )}
       <button type="button" className={btn} onClick={clock.skip}>
@@ -62,7 +62,7 @@ export function ReplayControls({ clock, total, state, bundle }: Props) {
       </label>
       <p role="status" aria-atomic="true" className="text-[13px] text-muted-foreground tabular">{announced}</p>
       <span className="rounded-full border border-border px-2 text-[12px] text-muted-foreground">replay · mutant durations as measured</span>
-      <span className="hidden text-[12px] text-muted-foreground md:inline">{"Space pause · ←/→ findings"}</span>
+      <span className="hidden text-[12px] text-muted-foreground md:inline">{"Space play or pause · ←/→ changes · Esc close"}</span>
     </div>
   );
 }
