@@ -1277,6 +1277,23 @@ A difference between arms is not tested and must not be presented as a finding.
    - The review pipeline (`src/chesterton/review.py`, `triage/`, `regress/`) must be identical to the registration commit `8f95e0e`. Any change voids the "as built" claim, and must be reported.
 9. **Wording.** "Built with `chesterton seed --swebench`" means built the way `scripts/benchmark.py:seed_for` builds v2's seeds. That build also installs pytest where the image lacks it.
 
+**Amendment 3 — 2026-09-27, before any v3 run.** A second pre-run review of the driver found two gaps. This amendment closes them and states the failures the driver cannot see. No estimand's definition changes.
+
+1. **A review that keeps raising.** If a review raised on its first attempt and on each of 3 retries, it stands as an error. It is listed, and it counts in the yield denominator as no test.
+2. **A gold check that keeps failing.** If a gold check's sandbox operation failed on its first attempt and on each of 3 retries, it is recorded as gold `error`, of kind other. The verified test stays verified: it counts in the yield numerator and in agreement's bound.
+3. **Failures that leave no trace in `review.json`.** Three infrastructure failures are not recorded there, so they are not retried:
+   - an unavailable confirmation classification, which can demote a headline finding to worth-a-look;
+   - an unavailable generation attempt that was not the last;
+   - a covering test that could not be read, which leaves the generation without that context.
+
+   Detecting them would change the registered pipeline, so they are accepted as part of it.
+4. **What Amendment 2, item 1 changes.**
+   - It narrows "a review that completed is never rerun": a completed review flagged under that item is rerun, whatever it showed.
+   - A verification timeout (300 s) counts as infrastructure, as the original Retries rule says, even when the generated test itself hangs.
+5. **Provenance.** Each row records the commit it ran at. Each report lists every commit its rows ran at, and whether `src/` or `scripts/` was dirty.
+
+The budget record that Amendment 2, item 3 calls for, if one is needed, becomes Amendment 4.
+
 **Reporting whatever the result.** Both primary estimands are reported with both intervals, in this section and in the README, even if they are low.
 
 ## 18. Schedule
