@@ -1176,6 +1176,67 @@ a replication with repaired tooling, not as an untouched confirmatory test.
 Newly screened tasks may change the mix of tasks, and sympy's `-k`
 selection applies to more of the sample.
 
+### Study v3: verified tests at scale. A descriptive study, REGISTERED 2026-09-26, before any v3 run.
+
+**Question.** On AI-written patches that passed SWE-bench's tests, how often does Chesterton's review produce an execution-verified regression test? And how often does that test also hold on the correct fix?
+
+v1 and v2 asked whether a patch gets "flagged at all". v3 asks something different: it measures the review's product, a verified test, across every task, where the earlier studies measured a flag.
+
+**Status of this study.**
+- It is descriptive and has no hypothesis test.
+- It was designed after v2's null result and after the 13-patch review studies on matplotlib-23314 (§9, §17). Those showed 9 verified tests from 13 patches, 8 of which held on the correct fix.
+- Its estimands, population and analysis are fixed below, before any v3 run, and it will be reported whatever the result.
+
+**Population.** Every patch in the 151 pairs v2 analysed: 302 agent patches from 16 tasks in 6 repositories (151 UTBoost-wrong, 151 UTBoost-accepted). All of them passed SWE-bench's own tests.
+- **Operational definition:** each pair in `benchmark-v2/pairs.json` whose wrong and control run files both exist under `benchmark-v2/runs/`. This reproduces exactly the 151 pairs and 302 distinct patches.
+- **Inputs:** each patch uses its existing v2 seed (`benchmark-v2/seeds/`) and v2 run report (`benchmark-v2/runs/`). No seed or mutation run is redone.
+
+**Pilot (stage 0).**
+- **Patches:** 5 pairs, which is 10 patches. That is the first 2 pairs, by wrong-patch stem, of pydata__xarray-4687 and of sympy__sympy-21847, plus the first pair of scikit-learn__scikit-learn-14087.
+- **Purpose:** measure cost per patch and catch pipeline faults before the main run.
+- **What may change afterwards:** only infrastructure fixes (see Retries), each recorded as an amendment before the main run.
+- **Reporting:** pilot patches are excluded from the main estimates and reported separately. The main study is therefore **146 pairs, 292 patches**.
+
+**Procedure, per patch.**
+1. Run `chesterton review` (triage, then the regression test) on the patch's v2 seed and run report, with the configuration of §9 as built at the registration commit. Every run is new; no earlier review is reused.
+2. If the review returns a verified test, run that test once on the task's **reference-fix seed**. That seed is built with `chesterton seed --swebench <task>`, which uses SWE-bench's gold patch, the task's own tests, the testbed interpreter and pytest installed, exactly as `scripts/benchmark.py:seed_for` builds v2's seeds.
+   - **Outcomes:** `passes_on_gold` (exit 0), `fails_on_gold` (exit 1) or `error` (anything else).
+3. Record:
+   - the headline count;
+   - whether a test was written and verified, plus its verification status;
+   - the gold outcome;
+   - Super and Ultra call counts, sandbox ops and wall time.
+
+**Estimands (primary).**
+1. **Yield** = (patches with a verified test) / 292, with a Wilson 95% interval.
+   - The denominator is every main-study patch, including patches whose review errored or whose run executed no mutant. Those count as no test.
+2. **Agreement with the correct fix** = `passes_on_gold` / (`passes_on_gold` + `fails_on_gold`) among verified tests, with a Wilson 95% interval.
+   - `error` gold checks are excluded from this denominator and reported with their count.
+
+**Sensitivity (pre-specified).** Patches within a task are not independent, and two sympy tasks contribute 64 of the 146 pairs. For each primary estimand, also report:
+- **(a)** the unweighted mean of per-task rates;
+- **(b)** a 95% cluster-bootstrap interval, resampling tasks with replacement, 10,000 resamples, seed 20260926.
+
+The headline reports the pooled estimate *and* the cluster interval.
+
+**Descriptive only (no claims).** These are reported without any claim attached:
+- both estimands by arm (wrong, accepted) and by task;
+- the distribution of headline counts;
+- the reasons a patch got no verified test: no headline, test failed to verify (with its status), or error;
+- cost per patch (median and total Super calls, Ultra calls, sandbox ops, wall time).
+
+A difference between arms is not tested and must not be presented as a finding.
+
+**Retries and exclusions.**
+- A review that fails for an infrastructure reason may be retried by re-invoking the resumable driver. The reasons that count are a sandbox or API error, or a timeout.
+- A review that completed is never rerun, whatever it shows.
+- A task whose reference-fix seed cannot be built has its gold checks reported as `error`. Its patches stay in the yield denominator.
+- Every retry and every error is listed in the report.
+
+**Budget rule.** If the pilot's cost per patch, times 292, exceeds the budget the project owner sets after the pilot, the main study runs on a stratified random sample: the same fraction of pairs from every task, drawn with seed 20260926. The fraction is fixed before any main-study run and recorded as an amendment. The report states that it is a sample.
+
+**Reporting whatever the result.** Both primary estimands are reported with both intervals, in this section and in the README, even if they are low.
+
 ## 18. Schedule
 
 | Week | Focus |
