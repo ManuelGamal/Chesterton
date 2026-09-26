@@ -101,6 +101,7 @@ function StoryView({ bundle, lines }: { bundle: Bundle; lines: DiffLine[] }) {
   const state = useMemo(() => stateAt(bundle, clock.t), [bundle, clock.t]);
   const order = useMemo(() => mutantsInLaneOrder(bundle), [bundle]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pendingFocus, setPendingFocus] = useState<string | null>(null);
   const [highlight, setHighlight] = useState<Verdict | null>(null);
   const selected = order.find((m) => m.id === selectedId) ?? null;
 
@@ -108,6 +109,21 @@ function StoryView({ bundle, lines }: { bundle: Bundle; lines: DiffLine[] }) {
     clock.pause();
     setSelectedId(id);
   };
+  // Closing the detail (Close button or Esc) returns focus to the capsule that opened it.
+  const closeDetail = () => {
+    setPendingFocus(selectedId);
+    setSelectedId(null);
+  };
+  useEffect(() => {
+    if (pendingFocus === null) return;
+    document.querySelector<HTMLElement>(`[data-capsule="${pendingFocus}"]`)?.focus();
+    setPendingFocus(null);
+  }, [pendingFocus]);
+  // Starting the replay clears the selection: the detail panel would otherwise show a
+  // change from a moment the replay has moved past.
+  useEffect(() => {
+    if (clock.playing) setSelectedId(null);
+  }, [clock.playing]);
   const step = (dir: 1 | -1) => {
     if (order.length === 0) return;
     const i = selected ? order.indexOf(selected) : -1;
@@ -136,7 +152,8 @@ function StoryView({ bundle, lines }: { bundle: Bundle; lines: DiffLine[] }) {
       return;
     }
     if (e.key === "Escape") {
-      setSelectedId(null);
+      if (["SELECT", "INPUT"].includes(tag)) return;
+      closeDetail();
       return;
     }
     if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
@@ -161,7 +178,7 @@ function StoryView({ bundle, lines }: { bundle: Bundle; lines: DiffLine[] }) {
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-4 pt-4">
           <h2 id="how-found" className="text-[17px] font-semibold">How Chesterton found this</h2>
           <span className="text-[13px] text-muted-foreground tabular md:ml-auto">
-            run totals: {c.sandbox_ops} sandboxes · {c.lightning_calls} Lightning · {c.super_calls} Super · {c.ultra_calls} Ultra · {Math.round(c.run_wall_s)} s
+            run totals: {c.sandbox_ops} sandboxes · Nemotron calls: {c.lightning_calls} Lightning · {c.super_calls} Super · {c.ultra_calls} Ultra · {Math.round(c.run_wall_s)} s
           </span>
         </div>
         <SummaryLine bundle={bundle} highlight={highlight} onHighlight={setHighlight} />
@@ -174,7 +191,7 @@ function StoryView({ bundle, lines }: { bundle: Bundle; lines: DiffLine[] }) {
             <Lanes bundle={bundle} state={state} reduced={clock.reduced} selected={selectedId} highlight={highlight} onSelect={select} />
             {selected ? (
               <MutantDetail bundle={bundle} mutant={selected} reduced={clock.reduced}
-                onClose={() => setSelectedId(null)} onStep={step} />
+                onClose={closeDetail} onStep={step} />
             ) : (
               <p className="px-3 py-3 text-[14px] text-muted-foreground">Click a change, or a marked line in the diff, to see what it did.</p>
             )}

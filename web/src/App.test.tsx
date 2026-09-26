@@ -146,6 +146,34 @@ describe("the story page", () => {
     expect(capsule(/caught/)).toHaveAttribute("data-dimmed", "true");
   });
 
+  it("returns focus to the capsule when Escape closes the detail", async () => {
+    serve(golden);
+    await openStory();
+    fireEvent.click(capsule(/missed/));
+    expect(detail()).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(detail()).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(capsule(/missed/));
+  });
+
+  it("leaves the selection when Escape is pressed while a form field has focus", async () => {
+    serve(golden);
+    await openStory();
+    fireEvent.click(capsule(/missed/));
+    const speed = document.querySelector("select") as HTMLSelectElement;
+    fireEvent.keyDown(speed, { key: "Escape" });
+    expect(detail()).toBeInTheDocument();
+  });
+
+  it("clears the selection when the replay starts", async () => {
+    serve(golden);
+    await openStory();
+    fireEvent.click(capsule(/missed/));
+    expect(detail()).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Replay/ }));
+    expect(detail()).not.toBeInTheDocument();
+  });
+
   it("pauses a running replay when a change is opened", async () => {
     serve(golden);
     await openStory();

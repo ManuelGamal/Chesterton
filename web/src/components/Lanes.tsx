@@ -60,7 +60,7 @@ export function Lanes({ bundle, state, reduced, selected, highlight, onSelect }:
                   }
                   return (
                     <motion.button key={s.id} type="button" {...motionProps}
-                      aria-pressed={selected === s.id} data-dimmed={dimmed} title={v.term}
+                      aria-pressed={selected === s.id} data-dimmed={dimmed} data-capsule={s.id} title={v.term}
                       onClick={() => onSelect(s.id)}
                       className={`${pill} cursor-pointer aria-pressed:outline-2 aria-pressed:outline-offset-2 aria-pressed:outline-accent`}
                       style={{ background: v.cssVar }}>
