@@ -17,9 +17,9 @@ Licensed under the MIT License.
 A replay of three recorded runs, plus one live call. The URL is added after
 the first deploy.
 
-1. **Wrong patch, caught:** an agent patch that passed SWE-bench and UTBoost proved wrong. Chesterton names the untested behaviour and writes a regression test, verified by execution, that also holds on the correct fix.
-2. **The honest limit:** a verified test that encodes the agent's own bug.
-3. **The correct fix:** the reference patch, well defended: 5 of its 6 mutants are killed, and triage judges the one survivor not worth a headline.
+1. **Wrong patch, caught:** an agent patch that passed SWE-bench and UTBoost proved wrong. Chesterton finds the change its tests miss and writes a regression test, verified by execution, that also holds on the correct fix.
+2. **The correct fix:** the fix matplotlib's developers merged: the tests catch 5 of its 6 changes, and the one they miss is judged not worth a headline.
+3. **Checking our own tests:** in our 13-patch study, half of Chesterton's first verified tests locked in the agent's bug; one rule cut that to 1 in 9, and this story shows the one left, and how the correct fix catches it.
 
 ## How this runs on Nebius
 

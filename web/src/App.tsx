@@ -167,7 +167,7 @@ function StoryView({ bundle, lines }: { bundle: Bundle; lines: DiffLine[] }) {
         <SummaryLine bundle={bundle} highlight={highlight} onHighlight={setHighlight} />
         <ReplayControls clock={clock} total={total} state={state} bundle={bundle} />
         <div className="flex flex-col md:h-[75vh] md:flex-row">
-          <div className="max-h-[75vh] min-w-0 overflow-auto border-b border-border md:max-h-none md:w-[60%] md:border-b-0 md:border-r">
+          <div className="min-w-0 border-b border-border md:w-[60%] md:overflow-auto md:border-b-0 md:border-r">
             <DiffPane lines={lines} bundle={bundle} state={state} selected={selected} onSelectLine={selectLine} reduced={clock.reduced} />
           </div>
           <div className="min-w-0 overflow-auto md:w-[40%]">
