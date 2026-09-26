@@ -636,14 +636,16 @@ async def _main(argv: list[str]) -> int:
         _say("record B, c and f as Amendment 4 before any main run; nothing was written")
         return 0
 
-    if args.sample is not None and args.stage != "main":
-        parser.error("--sample applies to the main stage only")
-    if args.dry_run:
-        if args.sample is None:
-            parser.error("--dry-run applies with --sample only")
-        _say(f"dry run, fraction {args.sample}: nothing is written")
-        _print_sizes(v.sample_sizes(_main_pairs(BENCH), args.sample))
-        return 0
+    # Only `run` has --sample and --dry-run; `gold-seeds` must not read them.
+    if args.cmd == "run":
+        if args.sample is not None and args.stage != "main":
+            parser.error("--sample applies to the main stage only")
+        if args.dry_run:
+            if args.sample is None:
+                parser.error("--dry-run applies with --sample only")
+            _say(f"dry run, fraction {args.sample}: nothing is written")
+            _print_sizes(v.sample_sizes(_main_pairs(BENCH), args.sample))
+            return 0
 
     from chesterton.llm.client import NemotronClient
     from chesterton.sandbox.contree import ConTreeSandboxRunner

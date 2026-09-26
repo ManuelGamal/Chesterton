@@ -699,3 +699,35 @@ def test_printing_never_crashes_on_encoding(monkeypatch):
 
     stream.flush()
     assert stream.buffer.getvalue().startswith(b"verified ")
+
+
+class _NoRunner:
+    """Stands in for ConTreeSandboxRunner: the CLI only needs to construct and close it."""
+
+    closed = False
+
+    async def aclose(self):
+        _NoRunner.closed = True
+
+
+async def test_the_gold_seeds_command_runs_from_the_command_line(tmp_path, demo_seed, monkeypatch):
+    # Live 2026-09-27: `gold-seeds` reached the run-only --sample check and died on
+    # AttributeError before building anything. Every other test called the functions directly.
+    import chesterton.sandbox.contree as contree
+
+    b = bench(tmp_path, demo_seed, gold=False)
+    asked = {}
+
+    async def fake_build(runner, tasks, out):
+        asked["tasks"], asked["out"] = tasks, out
+        return {t: "built" for t in tasks}
+
+    monkeypatch.setattr(study, "BENCH", b)
+    monkeypatch.setattr(study, "build_gold_seeds", fake_build)
+    monkeypatch.setattr(study, "seed_counts", lambda *args: "counts")
+    monkeypatch.setattr(contree, "ConTreeSandboxRunner", _NoRunner)
+    _NoRunner.closed = False
+
+    assert await study._main(["gold-seeds"]) == 0
+    assert asked == {"tasks": [TASK], "out": b / "gold-seeds"}
+    assert _NoRunner.closed
