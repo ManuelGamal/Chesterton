@@ -822,7 +822,18 @@ git commit -m "feat: the resumable study v3 driver: reference-fix seeds, pilot, 
 
 ## After the plan (human, in your own terminal)
 
-1. **Gold seeds.** Run `python scripts/study_v3.py gold-seeds`. It builds 16 seeds at about 2 minutes each.
-2. **Pilot.** Run `python scripts/study_v3.py run pilot`, then `python scripts/study_v3.py report pilot`. Read the cost lines, and set a budget.
-3. **Main.** Run `python scripts/study_v3.py run main`, adding `--sample F` if the budget rule applies. Record any sample as an amendment in spec §17 before this run. Then run `python scripts/study_v3.py report main`.
-4. **Record the result.** Write it into spec §17 under "Study v3 result, as registered", and into the README, whatever it is.
+Always run the driver like this, so the log survives and printing never fails on the console's encoding:
+
+```
+PYTHONIOENCODING=utf-8 python scripts/study_v3.py … 2>&1 | tee logs/study-v3-<stage>.log
+```
+
+In this order (spec §17, Amendment 2):
+
+1. **Gold seeds.** Run `gold-seeds`. It builds 16 seeds at about 2 minutes each. Check each printed `selectable` and `failing` count against the median of that task's v2 seeds, printed beside it: a large gap is image drift. Re-run it to retry a failed build. `run` refuses to start while a task has no seed, unless its recorded failure is accepted with `--accept-missing-gold`.
+2. **Pilot.** Run `run pilot`, then `report pilot`, which prints the cost first and the estimands after it.
+3. **Budget.** Read the billing (Nebius Token Factory plus sandboxes) and set c = the pilot's spend / 10. State a budget B, then run `budget --usd B --cost-per-patch C`. It prints f and each task's k, and writes nothing. The pilot's estimands are not consulted.
+4. **Amendment 3.** If f < 1, record B, c and f in spec §17 as Amendment 3, before any main run. `run main --sample f --dry-run` prints the same k without writing the lock.
+5. **Main.** Run `run main`, adding `--sample f` if f < 1. Re-invoke it to retry infrastructure failures. It exits non-zero if it stopped after 5 consecutive errors. Rows with an `other:` error are retried only with `--retry-other`.
+6. **Report.** Run `report main`. It prints `INCOMPLETE: k of N rows` first if any registered row is missing.
+7. **Record the result.** Write it into spec §17 under "Study v3 result, as registered", and into the README, whatever it is.
