@@ -264,6 +264,8 @@ def report(
         "missing": missing,
         "sample": sample,
         "provenance": provenance,
+        # Amendment 3, item 5: every commit the rows ran at; a row without one is null.
+        "commits": sorted({r.get("commit") for r in rows}, key=lambda c: (c is None, c or "")),
         "patches": len(rows),
         "yield": estimate(yield_counts(rows)),
         "agreement": estimate(agreement_counts(rows)),

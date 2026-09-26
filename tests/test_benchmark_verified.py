@@ -184,6 +184,14 @@ def test_the_report_states_what_is_missing_the_sample_and_its_provenance():
     assert v.report([row("a")])["sample"] is None
 
 
+def test_the_report_lists_every_commit_its_rows_ran_at():
+    old, new, unknown = row("a"), row("a"), row("b")
+    old["commit"], new["commit"] = "bbb2222", "aaa1111"
+
+    assert v.report([old, new, dict(new), unknown])["commits"] == ["aaa1111", "bbb2222", None]
+    assert v.report([row("a")])["commits"] == [None]
+
+
 def test_the_sensitivity_without_matplotlib_23314_leaves_that_task_out():
     rows = [row("matplotlib__matplotlib-23314", verified=True, gold="fails_on_gold"),
             row("matplotlib__matplotlib-23314", verified=True, gold="fails_on_gold"),
