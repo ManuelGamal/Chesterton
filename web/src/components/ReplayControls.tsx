@@ -61,7 +61,7 @@ export function ReplayControls({ clock, total, state, bundle }: Props) {
         </select>
       </label>
       <p role="status" aria-atomic="true" className="text-[13px] text-muted-foreground tabular">{announced}</p>
-      <span className="rounded-full border border-border px-2 text-[12px] text-muted-foreground">replay · mutant durations as measured</span>
+      <span className="rounded-full border border-border px-2 text-[12px] text-muted-foreground">replay of a recorded run · real timings</span>
       <span className="hidden text-[12px] text-muted-foreground md:inline">{"Space play or pause · ←/→ changes · Esc close"}</span>
     </div>
   );

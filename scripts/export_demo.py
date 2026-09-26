@@ -40,7 +40,7 @@ STORIES = [
      "system": "matplotlib's developers (the merged fix)",
      "verdict": ("The fix matplotlib's developers merged is well tested: the tests caught 5 of the 6 "
                  "changes Chesterton made to its lines, and Nemotron judged the one they missed worth "
-                 "a look, not a headline."),
+                 "a look but not a real gap."),
      "seed": "seeds/matplotlib-23314.json",
      "run": "runs/matplotlib-23314.json",
      "review": "review-gold/matplotlib-23314.json",

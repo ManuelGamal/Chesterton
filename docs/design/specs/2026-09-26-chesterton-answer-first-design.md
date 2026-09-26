@@ -17,7 +17,7 @@ The tabs, in this order:
 | # | id | Tab | Verdict (the page's first sentence) |
 |---|---|---|---|
 | 1 | `hero` | Wrong patch, caught | The agent's fix passed every test, but no test checks that `set_visible(True)` actually shows a 3D plot. Chesterton found the gap and wrote the missing test. |
-| 2 | `gold` | The correct fix | The fix matplotlib's developers merged is well tested: the tests caught 5 of the 6 changes Chesterton made to its lines, and Nemotron judged the one they missed worth a look, not a headline. |
+| 2 | `gold` | The correct fix | The fix matplotlib's developers merged is well tested: the tests caught 5 of the 6 changes Chesterton made to its lines, and Nemotron judged the one they missed worth a look but not a real gap. |
 | 3 | `limit` | Checking our own tests | In our 13-patch study, half of Chesterton's first verified tests (5 of 10) locked in the agent's bug. One rule, test through the public API, cut that to 1 in 9. This is the one that still slips through. We catch it by running the test on the correct fix, which SWE-bench provides and a new PR does not. |
 
 Where the copy lives:

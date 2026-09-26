@@ -35,5 +35,8 @@ test.describe("reduced motion", () => {
     const before = await page.getByRole("status").textContent();
     await page.waitForTimeout(800);
     await expect(page.getByRole("status")).toHaveText(before ?? "");
+    await page.getByRole("button", { name: /^Replay/ }).click();
+    await expect(page.getByRole("status")).toHaveText(/(\d+) of \1 changes tested/);
+    await expect(page.getByRole("button", { name: /^Replay/ })).toBeVisible();
   });
 });

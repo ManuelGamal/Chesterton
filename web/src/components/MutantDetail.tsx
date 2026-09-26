@@ -37,7 +37,6 @@ export function MutantDetail({ bundle, mutant, reduced, onClose, onStep }: Props
     <section aria-label="The selected change" className="border-t border-border bg-card p-4">
       <div className="flex items-center gap-2">
         <h3 className="font-mono text-[14px]">{mutant.file.split("/").pop()}:{span(mutant.start_line, mutant.end_line)}</h3>
-        <span className="text-[13px] text-muted-foreground">{mutant.operator}</span>
         <span className="ml-auto flex gap-1">
           <button type="button" className={icon} aria-label="Previous change" onClick={() => onStep(-1)}><ChevronLeft size={18} aria-hidden="true" /></button>
           <button type="button" className={icon} aria-label="Next change" onClick={() => onStep(1)}><ChevronRight size={18} aria-hidden="true" /></button>

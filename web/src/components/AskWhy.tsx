@@ -71,7 +71,7 @@ export function AskWhy({ storyId, finding }: { storyId: string; finding: Finding
             <p><span className="text-muted-foreground">{`${live(state)}:`}</span> {verdict(state.label, state.category)}</p>
             <p className="mt-1">{state.explanation}</p>
             {state.label !== finding.label && (
-              <p className="mt-1 text-muted-foreground">The live answer differs. Model answers vary, which is why each headline was confirmed 3 of 3 times.</p>
+              <p className="mt-1 text-muted-foreground">The live answer differs. Model answers vary, which is why each finding that matters was confirmed 3 of 3 times.</p>
             )}
           </div>
         )}
