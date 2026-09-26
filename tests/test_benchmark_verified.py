@@ -112,9 +112,98 @@ def test_the_report_carries_both_estimands_arms_reasons_and_cost():
     assert r["gold_errors"] == 0
     assert r["by_arm"]["wrong"]["yield"]["n"] == 2
     assert r["by_task"]["a"]["yield"] == [1, 2]
-    assert r["no_test_reasons"] == {"no headline": 1, "not verified: fails_on_patch": 1, "error": 1}
+    assert r["no_test_reasons"] == {"no headline": 1, "not verified: fails_on_patch": 1, "error: infrastructure": 1}
     assert r["headline_counts"] == {"1": 2, "0": 2}
-    assert r["cost"]["super_calls"] == {"median": 3.0, "total": 12}
-    assert r["retried"] == [{"task": "a", "patch": "p", "retries": 1}]
+    assert r["cost"]["super_calls"] == {"median": 3.0, "total": 9}
+    assert r["cost_rows"] == 3
+    assert r["retried"] == [{"task": "a", "patch": "p", "retries": 1, "history": []}]
     assert r["errors"] == [{"task": "b", "patch": "p", "error": "SandboxError: gone"}]
     json.dumps(r)  # the report is plain JSON
+
+
+def test_a_gold_error_is_listed_classified_and_counted_in_the_agreement_bound():
+    bad = row("a", verified=True, gold="error")
+    bad |= {"patch": "w2", "gold_exit": 2, "gold_tail": "E   ModuleNotFoundError: No module named 'x'"}
+    rows = [row("a", verified=True, gold="passes_on_gold"), bad, row("b", verified=True, gold="fails_on_gold")]
+
+    r = v.report(rows)
+
+    assert r["gold_errors"] == 1
+    assert r["gold_errors_list"] == [{"task": "a", "patch": "w2", "exit": 2, "kind": "collection"}]
+    assert (r["agreement"]["k"], r["agreement"]["n"]) == (1, 2)
+    assert (r["agreement_bound"]["k"], r["agreement_bound"]["n"]) == (1, 3)
+
+
+def test_a_gold_error_is_a_collection_error_only_when_its_tail_says_so():
+    assert v.gold_error_kind("ImportError while importing test module") == "collection"
+    assert v.gold_error_kind("!!! Interrupted: 1 error during collection !!!") == "collection"
+    assert v.gold_error_kind("!!! Interrupted: 2 errors during collection !!!") == "collection"
+    assert v.gold_error_kind("_____ ERROR collecting tests/test_x.py _____") == "collection"
+    assert v.gold_error_kind("Segmentation fault") == "other"
+    assert v.gold_error_kind(None) == "other"
+
+
+def test_the_no_test_reasons_are_fixed_categories():
+    capped = row("a", headline=1, status="error")
+    capped |= {"infra_capped": True, "infra_reason": "verification status is error"}
+    rows = [row("a", headline=0), row("a", status="no regression test generated: private_api (_x, _y)"),
+            row("a", status="fails_on_patch"), capped,
+            row("b", headline=0, error="other: ValueError: slug"),
+            row("b", headline=0, error="infrastructure: OpenAIError: outage")]
+
+    r = v.report(rows)
+
+    assert r["no_test_reasons"] == {
+        "no headline": 1, "not verified: private_api": 1, "not verified: fails_on_patch": 1,
+        "infrastructure (capped)": 1, "error: other": 1, "error: infrastructure": 1,
+    }
+    assert r["infra_capped"] == [{"task": "a", "patch": "p", "reason": "verification status is error"}]
+    assert v.normalise_status("no covering test to place a new test beside") == "no covering test"
+    assert v.normalise_status("regression stage failed: SandboxReadError: gone") == "regression stage failed"
+    assert v.normalise_status(None) == "none"
+
+
+def test_the_report_states_what_is_missing_the_sample_and_its_provenance():
+    stub = {"commit": "abc1234", "dirty": False, "pipeline_unchanged_since_registration": True,
+            "models": {"reasoning": "m1"}, "python": "3.13.0"}
+    sample = {"fraction": 0.5, "seed": v.SEED, "pairs_per_task": {"a": 1}}
+
+    r = v.report([row("a")], missing=[{"task": "a", "patch": "c1"}], sample=sample, provenance=stub)
+
+    assert (r["expected"], r["present"]) == (2, 1)
+    assert r["missing"] == [{"task": "a", "patch": "c1"}]
+    assert r["sample"] == sample
+    assert r["provenance"] == stub
+    assert v.report([row("a")])["sample"] is None
+
+
+def test_the_sensitivity_without_matplotlib_23314_leaves_that_task_out():
+    rows = [row("matplotlib__matplotlib-23314", verified=True, gold="fails_on_gold"),
+            row("matplotlib__matplotlib-23314", verified=True, gold="fails_on_gold"),
+            row("a", verified=True, gold="passes_on_gold"), row("a")]
+
+    r = v.report(rows)
+
+    assert (r["yield"]["k"], r["yield"]["n"]) == (3, 4)
+    s = r["without_matplotlib_23314"]
+    assert (s["yield"]["k"], s["yield"]["n"]) == (1, 2)
+    assert (s["agreement"]["k"], s["agreement"]["n"]) == (1, 1)
+
+
+def test_the_budget_fraction_is_rounded_down_to_a_multiple_of_five_hundredths():
+    assert v.budget_fraction(20, 0.1) == 0.65  # 20 / 29.2 = 0.6849
+    assert v.budget_fraction(1000, 0.1) == 1.0
+    assert v.budget_fraction(29.2, 0.1) == 1.0
+    assert v.budget_fraction(14.6, 0.1) == 0.5  # exactly 0.5, not 0.45 by float error
+    assert v.budget_fraction(0.01, 0.1) == 0.0
+    with pytest.raises(ValueError):
+        v.budget_fraction(10, 0)
+
+
+def test_the_sample_sizes_are_the_k_the_sample_draws():
+    pop = pop_of({"a": 10, "b": 4, "c": 1})
+
+    sizes = v.sample_sizes(pop, 0.5)
+
+    assert sizes == {"a": (5, 10), "b": (2, 4), "c": (1, 1)}
+    assert sum(k for k, _ in sizes.values()) == len(v.sample(pop, 0.5))
