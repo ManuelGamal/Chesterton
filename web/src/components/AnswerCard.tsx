@@ -8,7 +8,21 @@ import { CodeDiff } from "./CodeDiff";
 
 export const GOLD_WARNING = "Verified, but it fails on the correct fix: it encodes the agent's bug.";
 
+const MUTANT_TITLE =
+  "A mutant is a small deliberate change to a line of the patch; if every test still passes, the tests missed it.";
+
 const heading = "text-[13px] font-semibold uppercase tracking-wide text-muted-foreground";
+
+function MutantCaption({ bucket }: { bucket: Bucket }) {
+  return (
+    <p className="mt-2 text-[14px]" title={MUTANT_TITLE}>
+      Chesterton changed this line on purpose (a <em>mutant</em>).{" "}
+      {bucket === "headline"
+        ? "Every test still passed."
+        : "The tests still passed; Nemotron judged it worth a look."}
+    </p>
+  );
+}
 
 /** A hand-written verdict may set code in `backticks`. */
 function withCode(text: string): ReactNode[] {
@@ -83,25 +97,26 @@ export function AnswerCard({ bundle, reduced }: { bundle: Bundle; reduced: boole
       <p className="min-w-0 text-[13px] text-muted-foreground">
         {m.repo} · <span title={m.submission}>patch by {m.system}</span> · {m.title}
       </p>
-      <p className="mt-2 max-w-5xl text-[20px] font-semibold leading-snug">{withCode(m.verdict)}</p>
+      <h1 className="mt-2 max-w-5xl text-[20px] font-semibold leading-snug">{withCode(m.verdict)}</h1>
       {top && finding && (
         <div className="mt-4 grid gap-6 lg:grid-cols-2">
           <div className="min-w-0">
-            <h2 className={`${heading} flex flex-wrap items-baseline gap-x-3`}>
-              <span>The change the tests miss</span>
-              <span className="normal-case tracking-normal">
+            <div className="flex flex-wrap items-baseline gap-x-3">
+              <h2 className={heading}>The change the tests miss</h2>
+              <span className="text-[13px]">
                 <span aria-hidden="true" style={{ color: missed.cssVar }}>{missed.glyph}</span>{" "}
                 <span className="text-foreground">{top.bucket === "headline" ? "tests still pass" : "missed, judged worth a look"}</span>
               </span>
-            </h2>
+            </div>
             <p className="mt-1 text-[13px] text-muted-foreground">{finding.file} · {lineRange(finding.start_line, finding.end_line)}</p>
+            <MutantCaption bucket={top.bucket} />
             <div className="mt-1">
               <CodeDiff key={finding.id} rows={windowDiff(finding.original, finding.mutated)} reduced={reduced} label="The change" />
             </div>
-            <p className="mt-2 text-[15px]"><span className="text-muted-foreground">Nemotron: </span>{finding.explanation}</p>
+            <p className="mt-2 text-[15px]"><span className="text-muted-foreground">Nemotron on this change: </span>{finding.explanation}</p>
           </div>
           <div className="min-w-0">
-            <h2 className={heading}>The missing test</h2>
+            <h2 className={heading}>{test !== null ? "The test Chesterton wrote" : "Regression test"}</h2>
             <MissingTest test={test} bucket={top.bucket} />
             <AskWhy key={`${m.id}:${finding.id}`} storyId={m.id} finding={finding} />
           </div>
