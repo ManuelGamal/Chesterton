@@ -94,7 +94,9 @@ def test_the_cluster_interval_is_seeded_and_collapses_when_every_task_agrees():
 
 
 def test_the_report_carries_both_estimands_arms_reasons_and_cost():
-    rows = [row("a", verified=True, gold="passes_on_gold"),
+    retried = row("a", verified=True, gold="passes_on_gold")
+    retried["retries"] = 1
+    rows = [retried,
             row("a", "control", headline=0),
             row("b", verified=False, status="fails_on_patch"),
             row("b", "control", error="SandboxError: gone", headline=0)]
@@ -110,4 +112,6 @@ def test_the_report_carries_both_estimands_arms_reasons_and_cost():
     assert r["no_test_reasons"] == {"no headline": 1, "not verified: fails_on_patch": 1, "error": 1}
     assert r["headline_counts"] == {"1": 2, "0": 2}
     assert r["cost"]["super_calls"] == {"median": 3.0, "total": 12}
+    assert r["retried"] == [{"task": "a", "patch": "p", "retries": 1}]
+    assert r["errors"] == [{"task": "b", "patch": "p", "error": "SandboxError: gone"}]
     json.dumps(r)  # the report is plain JSON

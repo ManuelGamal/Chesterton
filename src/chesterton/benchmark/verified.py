@@ -172,5 +172,7 @@ def report(rows: list[dict]) -> dict:
         "headline_counts": {str(h): c for h, c in sorted(Counter(r["headline"] for r in rows).items(), reverse=True)},
         "no_test_reasons": dict(Counter(_reason(r) for r in rows if not r["verified"])),
         "retries": sum(r["retries"] for r in rows),
+        "retried": [{"task": r["task"], "patch": r["patch"], "retries": r["retries"]} for r in rows if r["retries"] > 0],
+        "errors": [{"task": r["task"], "patch": r["patch"], "error": r["error"]} for r in rows if r["error"]],
         "cost": {key: cost(key) for key in ("super_calls", "ultra_calls", "ops", "wall_s")},
     }
