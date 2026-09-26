@@ -52,8 +52,10 @@ The answer card doesn't move with the replay. It always shows the final result.
 ## 4. "How Chesterton found this" (below the card)
 
 1. **Summary line**, built from the bundle:
-   "N small changes to the lines the agent wrote → the tests **caught** C, **missed** M → Nemotron picked the **H** that matter".
-   - Story 2 ends "… → Nemotron found none that matter".
+   "N small changes to the lines the patch changed → the tests **caught** C, **missed** M → Nemotron picked the **H** that matter".
+   - It says "the patch", not "the agent", because story 2's patch was written by matplotlib's developers.
+   - With H = 1 it reads "the 1 that matters". Story 2 ends "… → Nemotron found none that matter".
+   - When some changes sit on lines no test runs, it adds "· U on lines no test runs".
    - "caught C" and "missed M" are buttons. Each highlights its capsules and toggles off on a second click.
 2. **Replay controls**, with no autoplay:
    - The section opens at the final state (`t = total`).
@@ -103,8 +105,8 @@ These are in `src/chesterton/demo/export.py` and `scripts/export_demo.py`:
   - update `limit`'s `tab` and `title`;
   - reorder `STORIES` to hero, gold, limit, which also sets the order in `index.json`.
 - **Finding to mutant link:** every triaged finding (headline, worth a look and dismissed) gains `mutant_id`.
-  - It is found by matching the surviving mutant with the same file, `start_line`, `end_line` and mutated source line.
-  - The export fails loudly if a finding matches zero mutants or more than one. A test asserts that every finding in the committed bundles and in the golden fixture links to exactly one surviving mutant.
+  - It is found by matching a surviving mutant with the same file, `start_line` and `end_line` whose changed lines (removed and added code, from a line diff of its windows) equal the finding's.
+  - Matching is one-to-one: each finding claims its own mutant, because two mutants can make the identical change. The export fails loudly if a finding has no unclaimed match. A test asserts that every finding in the committed bundles and in the golden fixture links to a distinct surviving mutant.
 - **Contract:** `web/src/bundle.ts` gains `Meta.verdict` and `Finding.mutant_id`, and `assertBundle` checks both. The golden fixture is regenerated, and the committed bundles are re-exported.
 
 ## 7. What goes away
@@ -112,6 +114,7 @@ These are in `src/chesterton/demo/export.py` and `scripts/export_demo.py`:
 - The PR/mutant tab switcher in the finding panel. Its job moves to the answer card's diff and the detail panel's wipe.
 - The standalone "Hunk removal (ddmin), …" line. It becomes the detail panel's note on undefended hunks.
 - The "No headline findings: …" empty-state line. Story 2's answer card covers it.
+- The worth-a-look and dismissed lists and the triage counts line. Every judged change is reachable from its capsule, and the detail panel shows Nemotron's judgment.
 - Autoplay, and the "Pause first in tab order" rule that existed because of autoplay. The replay controls stay keyboard reachable.
 
 ## 8. Unchanged
