@@ -1237,6 +1237,46 @@ A difference between arms is not tested and must not be presented as a finding.
 
 **Amendment 1 — 2026-09-26, before any v3 run.** Written down so that a sample and the intervals can be rebuilt from this text alone; no estimand changes. **The sample:** each task's pairs are sorted by wrong-patch stem, and k = max(1, round(fraction × n)) of them are drawn with Python's `random.Random(f"20260926:{task}").sample` (Python's `round` rounds halves to even, and every task keeps at least one pair). **The cluster bootstrap:** tasks with no eligible patch for an estimand (n = 0) are left out of that estimand's resampling pool; each resample draws as many tasks as the pool holds, with replacement, from `random.Random(20260926)`; its statistic is the pooled ratio (total k / total n); the interval is the nearest-rank pair of the sorted 10,000 statistics at indices round(0.025 × 9,999) and round(0.975 × 9,999). The code is `src/chesterton/benchmark/verified.py`.
 
+**Amendment 2 — 2026-09-26, before any v3 run.** Written after a pre-run review of the driver. No estimand's definition changes.
+
+1. **Infrastructure failure.**
+   - A review counts as an infrastructure failure, and is retried by re-invoking the driver, when any of these holds:
+     - it raised;
+     - any triage classification that `review.json` records failed as `unavailable` (the two extra confirmation samples are not recorded; an outage on every first classification makes the review raise);
+     - its regression stage failed with an exception;
+     - its recorded generation failure is `unavailable` (`review.json` records only the last attempt's, in `regression.note`);
+     - its verification status is `error`.
+   - The failed review's file is kept, as `<stem>.review.<n>.json`, and its reason is listed.
+   - After 3 retries the last review stands. It counts in the yield denominator as no test, and it is listed.
+   - An exception outside the known infrastructure types is recorded and is not retried automatically. The known types are API, sandbox, model-unavailable and timeout (`openai.OpenAIError`, `SandboxReadError` and a failed sandbox operation, `ModelUnavailable`, `TimeoutError`), plus `BudgetExhausted`.
+   - The driver stops a stage after 5 consecutive failures.
+2. **Gold checks.**
+   - A gold check whose sandbox operation failed is retried. It is not an outcome.
+   - `error` means one of two things: a completed run that exited other than 0 or 1, or a task whose reference-fix seed could not be built after retries.
+   - Each `error` records its exit code and output tail, and is classified as either a collection/import error or other.
+   - The main run does not start until every task has a reference-fix seed, or a recorded build failure that the owner has accepted.
+   - As a pre-specified bound, agreement is also reported with every gold `error` counted as `fails_on_gold`.
+3. **The budget rule, made mechanical.**
+   - The cost per patch, c, is the pilot's spend divided by 10. The spend is the Nebius Token Factory plus sandbox cost, taken from billing.
+   - The owner states a budget B before any main run.
+   - Then f = min(1, B / (292 × c)), rounded down to a multiple of 0.05. The sample is drawn only if f < 1.
+   - The pilot's estimands are not consulted.
+4. **The sample.**
+   - It is drawn from the 146 main pairs, with the pilot removed. A task's n is its number of main pairs.
+   - The yield denominator is the number of sampled patches.
+   - The pooled estimate is unweighted. Tasks with one pair are always kept, so they are slightly over-represented.
+   - No sample is drawn once any main review exists.
+5. **Bootstrap details.**
+   - The resampling pool is sorted by task id, and each draw is `rng.choice(pool)`.
+   - A fresh `random.Random(20260926)` is used for each estimand and for each arm.
+   - The Python version is recorded in each report's provenance. The project's `.venv`, which the study runs in, is Python 3.13.
+6. **Headline count.** The headline count is the length of the review's `triage.headline` list (§9 as built). Triage ranks the survivors that were classified as a confident `untested_invariant`, safety first and then by the most covering tests. It takes at most 3 of them, each from a different hunk, and classifies each of those twice more. A headline finding is one that all 3 of its classifications called a confident `untested_invariant`. The count is therefore 0 to 3. It is descriptive only.
+7. **Sensitivity (c), descriptive.** Both estimands are also reported without matplotlib-23314. Its 13 wrong patches were reviewed twice before registration, and they informed §9's rule that tests must use the public API.
+8. **Provenance.**
+   - Each report records the commit it ran at, and whether the working tree was dirty.
+   - The review pipeline (`src/chesterton/review.py`, `triage/`, `regress/`) must be identical to the registration commit `8f95e0e`. Any change voids the "as built" claim, and must be reported.
+9. **Wording.** "Built with `chesterton seed --swebench`" means built the way `scripts/benchmark.py:seed_for` builds v2's seeds. That build also installs pytest where the image lacks it.
+
 **Reporting whatever the result.** Both primary estimands are reported with both intervals, in this section and in the README, even if they are low.
 
 ## 18. Schedule
