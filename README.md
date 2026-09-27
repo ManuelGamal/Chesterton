@@ -6,9 +6,41 @@ A counterfactual code reviewer for AI-written pull requests. It deletes each
 line of your patch in a parallel universe and reports which deletions your test
 suite never noticed.
 
-Status: implemented and benchmarked (v2, a registered null result), with a
-live demo. See [`docs/design/specs/`](docs/design/specs/) for the
+Status: implemented, measured in three pre-registered studies (see Results),
+with a live demo. See [`docs/design/specs/`](docs/design/specs/) for the
 current design.
+
+## Results
+
+**Study v3, verified tests at scale.**
+- **When and where:** pre-registered 2026-09-26 and run 2026-09-27 at commit `0ee40b3`.
+- **The patches:** 292 AI-written patches that had passed SWE-bench's own tests, from 16 tasks in 6 Python libraries.
+
+What `chesterton review` produced:
+
+- **Yield:** it wrote an execution-verified regression test (one that passes on the patch and fails on a deliberate mutant of it) for **91 of 292 patches (31%)**.
+  - Wilson 95% interval: 26–37%.
+  - Clustered by task: 24–39%.
+- **Agreement:** **73 of those 91 tests (80%)** also pass on SWE-bench's reference fix.
+  - Wilson 95% interval: 71–87%.
+  - Clustered by task: 65–89%.
+  - The mean of the 12 per-task rates is 65%.
+  - No test failed to run on the reference fix.
+- **Without matplotlib-23314,** the task the pipeline was tuned on: yield 29% and agreement 81%.
+
+How to read it:
+
+- **It is descriptive.** It tests no hypothesis.
+- **A verified test guards behaviour the patch has and its suite does not check.** It does not detect that a patch is wrong.
+- **Each patch was reviewed once, and model output varies.** The 10-patch pilot, reported separately, gave agreement 2/8.
+- **With 16 unequal tasks the intervals are approximate.**
+
+The full result, per-task table and caveats are in spec §17, under "Study v3 result, as registered".
+
+**Studies v1 and v2: does "flagged at all" separate wrong patches from accepted ones?** No.
+- v2 had 151 pairs: 80% of wrong patches and 77% of accepted ones were flagged.
+- McNemar p = 0.28.
+- This null result is reported as registered.
 
 Licensed under the MIT License.
 
@@ -31,4 +63,4 @@ the first deploy.
   - `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`, or the Upstash Vercel integration's `KV_REST_API_URL` / `KV_REST_API_TOKEN`;
   - if the counter is unreachable, the live call fails closed with a 503 rather than calling the model.
 - **Run it yourself:** `chesterton seed`, `chesterton run`, `chesterton review` (needs `NEBIUS_API_KEY` and `NEBIUS_PROJECT_ID`).
-- **The benchmark:** pre-registered and reported as registered, including its null result. See `docs/design/specs/2026-09-18-chesterton-design.md` §17.
+- **The studies:** all three were pre-registered and are reported as registered, including v1 and v2's null results. See `docs/design/specs/2026-09-18-chesterton-design.md` §17. Study v3's driver is `scripts/study_v3.py`, and its runbook is in that file's docstring.

@@ -1296,6 +1296,75 @@ The budget record that Amendment 2, item 3 calls for, if one is needed, becomes 
 
 **Reporting whatever the result.** Both primary estimands are reported with both intervals, in this section and in the README, even if they are low.
 
+### Study v3 result, as registered (run 2026-09-27)
+
+**How it ran.**
+- **Commit.** Every row ran at commit `0ee40b3`. Relative to the registered code, that commit adds only a fix to the driver's command line: `gold-seeds` crashed before it built anything. The review pipeline is byte-identical to the registration commit `8f95e0e`, and the report records this.
+- **Reference-fix seeds.** All 16 built. Each seed's selectable and failing test counts equal its task's v2 median, except psf__requests-863: 70 selectable and 6 failing against 68.5 and 7, as expected from a correct fix.
+- **Pilot.** 10 patches, 410 s.
+- **Budget.** The pilot cost about $0 of Token Factory credit, so the budget rule gave f = 1. The main study ran in full, with no sample and no Amendment 4.
+- **Main run.** 292 patches in 7,405 s, with 0 errors, 0 retries, 0 infrastructure caps and 0 gold errors. Cost: 1,799 Super calls, 214 Ultra attempts and 497 sandbox operations.
+
+**Primary estimands (main study: 292 patches, 16 tasks, 6 repositories).**
+
+| Estimand | Pooled | Wilson 95% | Task-clustered 95% | Mean of task rates |
+|---|---|---|---|---|
+| **Yield**: patches for which review wrote an execution-verified regression test | 91/292 = **31%** | 26–37% | 24–39% | 28% (16 tasks) |
+| **Agreement**: verified tests that also pass on SWE-bench's reference fix | 73/91 = **80%** | 71–87% | 65–89% | 65% (12 tasks) |
+
+**Pre-specified bound and sensitivity.**
+- With every gold `error` counted as `fails_on_gold`, agreement stays at 73/91 = 80%, because no gold check errored.
+- Sensitivity (c), which leaves out matplotlib-23314 (the task the private-attribute rule was developed on):
+  - yield: 78/266 = 29% (Wilson 24–35%);
+  - agreement: 63/78 = 81% (Wilson 71–88%).
+
+**Why 201 patches got no verified test.**
+- 138 had no finding confirmed as a headline.
+- For 41, the generated test failed on the patch itself.
+- For 13, the test also passed on the mutant.
+- For 9, there was no covering test to place the new test beside.
+
+**Headline findings per patch.** 138 patches had 0, 89 had 1, 49 had 2 and 16 had 3. This is descriptive only.
+
+**Per task** (main study; yield k/n, agreement k/n):
+
+| Task | Yield | Agreement |
+|---|---|---|
+| matplotlib__matplotlib-14623 | 10/32 | 8/10 |
+| matplotlib__matplotlib-23314 | 13/26 | 10/13 |
+| mwaskom__seaborn-3010 | 3/8 | 2/3 |
+| psf__requests-863 | 2/4 | 0/2 |
+| pydata__xarray-3305 | 0/6 | – |
+| pydata__xarray-4687 | 10/20 | 10/10 |
+| pylint-dev__pylint-5859 | 0/8 | – |
+| pylint-dev__pylint-7080 | 1/2 | 0/1 |
+| scikit-learn__scikit-learn-14087 | 5/8 | 4/5 |
+| scikit-learn__scikit-learn-14894 | 0/2 | – |
+| sympy__sympy-16450 | 1/12 | 1/1 |
+| sympy__sympy-17655 | 15/64 | 12/15 |
+| sympy__sympy-18621 | 2/6 | 1/2 |
+| sympy__sympy-20154 | 0/2 | – |
+| sympy__sympy-21847 | 6/28 | 3/6 |
+| sympy__sympy-22714 | 23/64 | 22/23 |
+
+**Pilot (reported separately, not part of the estimate).**
+- The pilot's 10 patches come from the first pairs of xarray-4687, sympy-21847 and scikit-learn-14087.
+  - Yield: 8/10 = 80% (Wilson 49–94%).
+  - Agreement: 2/8 = 25% (Wilson 7–59%).
+- The main study's different patches from the same three tasks gave yield 21/56 and agreement 17/21.
+- The contrast is reported, not explained. It is consistent with the variance of model output noted below.
+
+**Reading it.**
+- **Descriptive only.** No hypothesis was tested, and the two arms are not compared. By-arm figures are in `report.json` only.
+- **What a verified test is.** By construction it passes on the agent's patch. It guards behaviour the patch has and the suite does not check. It does not detect that a patch is wrong.
+- **Pooled versus per-task agreement.** The mean of task rates for agreement (65%) is well below the pooled 80%.
+  - Small tasks with 1–3 verified tests score low: psf__requests-863 0/2, pylint-7080 0/1, sympy-18621 1/2.
+  - xarray-4687 (10/10) and sympy-22714 (22/23) lift the pool.
+  - With 16 clusters of very unequal size (the two large sympy tasks hold 44% of the patches), the intervals are approximate and probably optimistic.
+- **Model variance.** Each patch was reviewed once, and model output varies. The two matplotlib-23314 review studies gave a different outcome for 6 of 13 patches, and the pilot above differs sharply from the main study.
+- **Design history.** The design followed v2's null result and the matplotlib-23314 review studies, whose task is part of this population. Sensitivity (c) shows the result does not depend on that task.
+- **What the agreeing tests are.** The 73 tests that hold on the reference fix pin down behaviour that the projects' own test suites leave unchecked. They are candidates for upstream contribution, but none has yet been checked against the projects' current code.
+
 ## 18. Schedule
 
 | Week | Focus |
