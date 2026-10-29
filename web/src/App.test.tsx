@@ -82,9 +82,12 @@ function serve(bundle: Bundle) {
   }));
 }
 
+/** Opens the story and its "How Chesterton found this" replay, which starts collapsed. */
 async function openStory() {
   render(<App />);
-  return screen.findByRole("region", { name: "What Chesterton found" });
+  const card = await screen.findByRole("region", { name: "What Chesterton found" });
+  fireEvent.click(screen.getByRole("button", { name: "How Chesterton found this" }));
+  return card;
 }
 
 const detail = () => screen.queryByRole("region", { name: "The selected change" });
@@ -100,7 +103,20 @@ describe("the story page", () => {
     vi.unstubAllGlobals();
   });
 
-  it("opens on the answer, with the replay finished and not playing", async () => {
+  it("opens on the answer, with the replay collapsed until asked for", async () => {
+    serve(golden);
+    render(<App />);
+    await screen.findByRole("region", { name: "What Chesterton found" });
+    const toggle = screen.getByRole("button", { name: "How Chesterton found this" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: " " });
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /^Replay/ })).toBeInTheDocument();
+  });
+
+  it("opens the replay finished and not playing", async () => {
     serve(golden);
     const card = await openStory();
     expect(within(card).getByText(/The tests never check the/)).toBeInTheDocument();

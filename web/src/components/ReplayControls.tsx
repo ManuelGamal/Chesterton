@@ -38,7 +38,7 @@ export function ReplayControls({ clock, total, state, bundle }: Props) {
   const btn = "inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-muted px-3 py-1.5 text-[14px] font-medium";
   const primary = "inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-[14px] font-medium text-accent-foreground";
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-card px-4 py-2">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-card px-4 py-2 md:px-8">
       {clock.playing ? (
         <button type="button" className={primary} onClick={clock.pause}>
           <Pause size={16} aria-hidden="true" /> Pause

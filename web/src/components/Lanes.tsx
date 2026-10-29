@@ -44,7 +44,8 @@ export function Lanes({ bundle, state, reduced, selected, highlight, onSelect }:
                   const done = s.phase === "done";
                   const v = done ? VERDICTS[m.verdict] : VERDICTS.pending;
                   const dimmed = done && highlight !== null && m.verdict !== highlight;
-                  const pill = `inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-semibold ${done ? "text-background" : "text-foreground"}`;
+                  // Outlined, not filled: a dozen filled pills would outshout the one finding above.
+                  const pill = "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[12px] font-medium";
                   const motionProps = {
                     layout: !reduced,
                     initial: reduced ? false : { x: -24, opacity: 0 },
@@ -53,7 +54,7 @@ export function Lanes({ bundle, state, reduced, selected, highlight, onSelect }:
                   };
                   if (!done) {
                     return (
-                      <motion.span key={s.id} {...motionProps} className={pill} style={{ background: v.cssVar }} title={v.term}>
+                      <motion.span key={s.id} {...motionProps} className={pill} style={{ color: v.cssVar, borderColor: v.cssVar }} title={v.term}>
                         <span aria-hidden="true">{v.glyph}</span>{v.word}
                       </motion.span>
                     );
@@ -63,7 +64,7 @@ export function Lanes({ bundle, state, reduced, selected, highlight, onSelect }:
                       aria-pressed={selected === s.id} data-dimmed={dimmed} data-capsule={s.id} title={v.term}
                       onClick={() => onSelect(s.id)}
                       className={`${pill} cursor-pointer aria-pressed:outline-2 aria-pressed:outline-offset-2 aria-pressed:outline-accent`}
-                      style={{ background: v.cssVar }}>
+                      style={{ color: v.cssVar, borderColor: v.cssVar }}>
                       <span aria-hidden="true">{v.glyph}</span>{v.word}
                     </motion.button>
                   );

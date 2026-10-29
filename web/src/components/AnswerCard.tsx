@@ -69,8 +69,9 @@ function MissingTest({ test, bucket }: { test: Regression | null; bucket: Bucket
         </p>
       )}
       {test.source && (
-        <details className="mt-2 text-[14px]">
-          <summary className="cursor-pointer text-muted-foreground">Show test</summary>
+        <details className="mt-3 text-[14px]">
+          {/* The one prominent action on the page. */}
+          <summary className="inline-flex cursor-pointer list-none items-center rounded-md bg-accent px-3 py-1.5 font-semibold text-accent-foreground hover:opacity-90 [&::-webkit-details-marker]:hidden">Show test</summary>
           <pre className={code}>{test.source}</pre>
         </details>
       )}
@@ -92,36 +93,50 @@ export function AnswerCard({ bundle, reduced }: { bundle: Bundle; reduced: boole
   const missed = VERDICTS.survived;
   const finding: Finding | undefined = top?.finding;
   const test = finding && bundle.regression?.finding_id === finding.id ? bundle.regression : null;
+  const caught = VERDICTS.killed;
   return (
-    <section aria-label="What Chesterton found" className="border-b border-border bg-card px-4 py-4 md:px-6">
-      <p className="min-w-0 text-[13px] text-muted-foreground">
-        {m.repo} · <span title={m.submission}>patch by {m.system}</span> · {m.title}
+    <section aria-label="What Chesterton found" className="border-b border-border px-4 py-5 md:px-8">
+      {/* The pull request as a reviewer meets it: who wrote it, and that its tests pass. */}
+      <p className="min-w-0 text-[14px] text-muted-foreground">
+        {m.repo} · <span title={m.submission}>pull request by {m.system}</span>
       </p>
-      <h1 className="mt-2 max-w-5xl text-[20px] font-semibold leading-snug">{withCode(m.verdict)}</h1>
-      {top && finding && (
-        <div className="mt-4 grid gap-6 lg:grid-cols-2">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-baseline gap-x-3">
-              <h2 className={heading}>The change the tests miss</h2>
-              <span className="text-[13px]">
-                <span aria-hidden="true" style={{ color: missed.cssVar }}>{missed.glyph}</span>{" "}
-                <span className="text-foreground">{top.bucket === "headline" ? "tests still pass" : "missed, judged worth a look"}</span>
-              </span>
+      <p className="mt-1 text-[16px] font-semibold">{m.title}</p>
+      <p className="mt-2">
+        <span className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[13px]"
+          style={{ color: caught.cssVar, borderColor: caught.cssVar }}>
+          <span aria-hidden="true">✓</span> All existing tests pass
+        </span>
+      </p>
+      <div className="mt-4 rounded-lg border border-border bg-card p-4 md:p-5"
+        style={top ? { borderLeftWidth: 3, borderLeftColor: missed.cssVar } : undefined}>
+        <p className="text-[14px] font-semibold">Chesterton review</p>
+        <h1 className="mt-1 max-w-5xl text-[21px] font-semibold leading-snug">{withCode(m.verdict)}</h1>
+        {top && finding && (
+          <div className="mt-5 grid gap-6 lg:grid-cols-2">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-baseline gap-x-3">
+                <h2 className={heading}>The change the tests miss</h2>
+                <span className="inline-flex items-center gap-1 rounded-full border px-2 text-[13px]"
+                  style={{ color: missed.cssVar, borderColor: missed.cssVar }}>
+                  <span aria-hidden="true">{missed.glyph}</span>
+                  <span>{top.bucket === "headline" ? "tests still pass" : "missed, judged worth a look"}</span>
+                </span>
+              </div>
+              <p className="mt-1 text-[13px] text-muted-foreground">{finding.file} · {lineRange(finding.start_line, finding.end_line)}</p>
+              <MutantCaption bucket={top.bucket} />
+              <div className="mt-1">
+                <CodeDiff key={finding.id} rows={windowDiff(finding.original, finding.mutated)} reduced={reduced} label="The change" missed />
+              </div>
+              <p className="mt-2 text-[15px]"><span className="text-muted-foreground">Nemotron on this change: </span>{finding.explanation}</p>
             </div>
-            <p className="mt-1 text-[13px] text-muted-foreground">{finding.file} · {lineRange(finding.start_line, finding.end_line)}</p>
-            <MutantCaption bucket={top.bucket} />
-            <div className="mt-1">
-              <CodeDiff key={finding.id} rows={windowDiff(finding.original, finding.mutated)} reduced={reduced} label="The change" />
+            <div className="min-w-0">
+              <h2 className={heading}>{test !== null ? "The test Chesterton wrote" : "Regression test"}</h2>
+              <MissingTest test={test} bucket={top.bucket} />
+              <AskWhy key={`${m.id}:${finding.id}`} storyId={m.id} finding={finding} />
             </div>
-            <p className="mt-2 text-[15px]"><span className="text-muted-foreground">Nemotron on this change: </span>{finding.explanation}</p>
           </div>
-          <div className="min-w-0">
-            <h2 className={heading}>{test !== null ? "The test Chesterton wrote" : "Regression test"}</h2>
-            <MissingTest test={test} bucket={top.bucket} />
-            <AskWhy key={`${m.id}:${finding.id}`} storyId={m.id} finding={finding} />
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </section>
   );
 }

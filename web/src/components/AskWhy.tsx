@@ -1,4 +1,4 @@
-import { Sparkles } from "lucide-react";
+import { MessageCircleQuestionMark } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Finding } from "../bundle";
 import { labelWords } from "../format";
@@ -51,10 +51,10 @@ export function AskWhy({ storyId, finding }: { storyId: string; finding: Finding
       .filter(Boolean)
       .join(" · ");
   return (
-    <div className="mt-3 rounded-md border border-border p-3">
+    <div className="mt-3">
       <button type="button" onClick={ask} disabled={state.kind === "waiting"}
-        className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-accent px-3 py-1.5 font-medium text-accent-foreground disabled:opacity-50">
-        <Sparkles size={16} aria-hidden="true" /> Ask Nemotron why (live)
+        className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-1.5 text-[14px] font-medium hover:bg-muted disabled:opacity-50">
+        <MessageCircleQuestionMark size={16} aria-hidden="true" /> Ask Nemotron why (live)
       </button>
       <div className="mt-2 text-[14px]" aria-live="polite">
         {state.kind === "waiting" && (

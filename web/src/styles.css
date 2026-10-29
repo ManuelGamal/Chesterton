@@ -5,22 +5,26 @@
 @import "@fontsource/jetbrains-mono/400.css";
 @import "@fontsource/jetbrains-mono/600.css";
 
+/* Zinc: neutral surfaces and a white primary button. Orange only means "the tests
+   missed this"; green only means "passes". Every text colour is >= 4.5:1 on both
+   --background and --card. */
 :root {
-  --background: #0F172A;
-  --card: #1B2336;
-  --muted: #272F42;
-  --border: #334155;
-  --foreground: #F8FAFC;
-  --muted-foreground: #94A3B8;
-  --accent: #56B4E9;
-  --accent-foreground: #0F172A;
-  --verdict-survived: #D55E00;
-  --verdict-killed: #009E73;
-  --verdict-uncovered: #E69F00;
-  --verdict-pending: #64748B;
-  --verdict-error: #94A3B8;
-  --diff-add: rgba(46, 160, 67, 0.10);
-  --diff-del: rgba(248, 81, 73, 0.10);
+  --background: #18181B;
+  --card: #1F1F23;
+  --muted: #27272A;
+  --border: #34343A;
+  --foreground: #F4F4F5;
+  --muted-foreground: #A1A1AA;
+  --accent: #F4F4F5;
+  --accent-foreground: #18181B;
+  --verdict-survived: #FB923C;
+  --verdict-killed: #4ADE80;
+  --verdict-uncovered: #FDE68A;
+  --verdict-pending: #71717A;
+  --verdict-error: #A1A1AA;
+  --diff-add: rgba(74, 222, 128, 0.10);
+  --diff-del: rgba(248, 113, 113, 0.10);
+  --diff-missed: rgba(251, 146, 60, 0.14);
   --scrim: rgb(0 0 0 / 0.6);
 }
 

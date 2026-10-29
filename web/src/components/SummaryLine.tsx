@@ -15,7 +15,7 @@ export function SummaryLine({ bundle, highlight, onHighlight }: Props) {
     </button>
   );
   return (
-    <p className="px-4 py-2 text-[15px] tabular">
+    <p className="px-4 py-2 text-[15px] tabular md:px-8">
       {s.total} small changes to the lines the patch changed → the tests {toggle("killed", "caught", s.caught)},{" "}
       {toggle("survived", "missed", s.missed)}
       {s.untested > 0 && <span className="text-muted-foreground"> · {s.untested} on lines no test runs</span>}
