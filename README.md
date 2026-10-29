@@ -46,8 +46,9 @@ Licensed under the MIT License.
 
 ## Demo
 
-A replay of three recorded runs, plus one live call. The URL is added after
-the first deploy.
+**Live: https://chesterton.vercel.app**
+
+A replay of three recorded runs, plus one live call.
 
 1. **Wrong patch, caught:** an agent patch that passed SWE-bench and UTBoost proved wrong. Chesterton finds the change its tests miss and writes a regression test, verified by execution, that also holds on the correct fix.
 2. **The correct fix:** the fix matplotlib's developers merged: the tests catch 5 of its 6 changes, and the one they miss is judged not a real gap.
