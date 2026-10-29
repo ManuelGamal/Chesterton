@@ -197,7 +197,8 @@ function StoryView({ bundle, lines, demo }: { bundle: Bundle; lines: DiffLine[];
   const c = bundle.counters;
   const s = summarise(bundle);
   return (
-    <div className="flex flex-col">
+    // Demo mode leaves room below the page so a recording can scroll the live answer up into view.
+    <div className="flex flex-col" style={demo ? { paddingBottom: "60vh" } : undefined}>
       <AnswerCard bundle={bundle} reduced={clock.reduced}
         pending={revealed ? undefined : <DemoRun bundle={bundle} reduced={clock.reduced} onDone={reveal} />} />
       {revealed && <section aria-labelledby="how-found" className="flex flex-col">
