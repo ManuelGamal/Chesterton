@@ -5,9 +5,9 @@ import { stateAt } from "../engine";
 import { VERDICTS } from "../verdicts";
 
 /** How long the recorded run takes on screen in demo mode. */
-export const DEMO_RUN_S = 5;
+export const DEMO_RUN_S = 7;
 /** A beat between the run finishing and the answer replacing it, so the final counts can be read. */
-const SETTLE_MS = 900;
+const SETTLE_MS = 1500;
 
 /** Demo mode (`?demo`): the review is revealed by a click, as the recorded run replayed
  *  in a few seconds, so the answer arrives on camera where a recorder's click-zoom points. */
