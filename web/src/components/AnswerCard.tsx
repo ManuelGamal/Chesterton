@@ -71,7 +71,7 @@ function MissingTest({ test, bucket }: { test: Regression | null; bucket: Bucket
       {test.source && (
         <details className="mt-3 text-[14px]">
           {/* The one prominent action on the page. */}
-          <summary className="inline-flex cursor-pointer list-none items-center rounded-md bg-accent px-3 py-1.5 font-semibold text-accent-foreground hover:opacity-90 [&::-webkit-details-marker]:hidden">Show test</summary>
+          <summary data-demo="show-test" className="inline-flex cursor-pointer list-none items-center rounded-md bg-accent px-3 py-1.5 font-semibold text-accent-foreground hover:opacity-90 [&::-webkit-details-marker]:hidden">Show test</summary>
           <pre className={code}>{test.source}</pre>
         </details>
       )}
@@ -87,7 +87,7 @@ function MissingTest({ test, bucket }: { test: Regression | null; bucket: Bucket
 }
 
 /** The top of a story: its verdict, the change the tests miss, and the missing test. */
-export function AnswerCard({ bundle, reduced }: { bundle: Bundle; reduced: boolean }) {
+export function AnswerCard({ bundle, reduced, pending }: { bundle: Bundle; reduced: boolean; pending?: ReactNode }) {
   const m = bundle.meta;
   const top = topFinding(bundle);
   const missed = VERDICTS.survived;
@@ -107,7 +107,7 @@ export function AnswerCard({ bundle, reduced }: { bundle: Bundle; reduced: boole
           <span aria-hidden="true">✓</span> All existing tests pass
         </span>
       </p>
-      <div className="mt-4 rounded-lg border border-border bg-card p-4 md:p-5"
+      {pending ?? <div className="mt-4 rounded-lg border border-border bg-card p-4 md:p-5"
         style={top ? { borderLeftWidth: 3, borderLeftColor: missed.cssVar } : undefined}>
         <p className="text-[14px] font-semibold">Chesterton review</p>
         <h1 className="mt-1 max-w-5xl text-[21px] font-semibold leading-snug">{withCode(m.verdict)}</h1>
@@ -136,7 +136,7 @@ export function AnswerCard({ bundle, reduced }: { bundle: Bundle; reduced: boole
             </div>
           </div>
         )}
-      </div>
+      </div>}
     </section>
   );
 }

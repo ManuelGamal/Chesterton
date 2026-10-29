@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -114,6 +114,27 @@ describe("the story page", () => {
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("button", { name: /^Replay/ })).toBeInTheDocument();
+  });
+
+  it("in demo mode, holds the review back until the run is clicked, then reveals it", async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", vi.fn((cb: FrameRequestCallback) => frames.push(cb)));
+    window.history.pushState({}, "", "/?demo");
+    try {
+      serve(golden);
+      render(<App />);
+      const card = await screen.findByRole("region", { name: "What Chesterton found" });
+      expect(within(card).queryByText(/The tests never check the/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "How Chesterton found this" })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /Run Chesterton review/ }));
+      expect(screen.getByRole("status")).toHaveTextContent("0 of 3 changes tested");
+      act(() => frames.at(-1)!(performance.now() + 60_000));
+      expect(screen.getByRole("status")).toHaveTextContent("3 of 3 changes tested");
+      expect(await within(card).findByText(/The tests never check the/, undefined, { timeout: 3000 })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "How Chesterton found this" })).toBeInTheDocument();
+    } finally {
+      window.history.pushState({}, "", "/");
+    }
   });
 
   it("opens the replay finished and not playing", async () => {

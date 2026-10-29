@@ -1,9 +1,10 @@
 import * as Tabs from "@radix-ui/react-tabs";
 import { ChevronDown, ChevronRight, Info } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { assertBundle, type Bundle, type DiffLine, type StoryIndex, type Verdict } from "./bundle";
 import { AboutDialog } from "./components/AboutDialog";
 import { AnswerCard } from "./components/AnswerCard";
+import { DemoRun } from "./components/DemoRun";
 import { DiffPane } from "./components/DiffPane";
 import { Lanes } from "./components/Lanes";
 import { MutantDetail } from "./components/MutantDetail";
@@ -12,6 +13,14 @@ import { SummaryLine } from "./components/SummaryLine";
 import { stateAt } from "./engine";
 import { mutantAtLine, mutantsInLaneOrder, summarise } from "./story";
 import { useReplay } from "./useReplay";
+
+/** `?demo`: a click-driven version for screen recording (see DemoRun). */
+function isDemo(): boolean {
+  return new URLSearchParams(window.location.search).has("demo");
+}
+
+/** Demo mode scales the page up so text survives a recorder's frame padding and video compression. */
+const DEMO_ZOOM = 1.25;
 
 async function fetchJson(url: string): Promise<unknown> {
   const r = await fetch(url);
@@ -24,6 +33,7 @@ export default function App() {
   const [indexError, setIndexError] = useState(false);
   const [active, setActive] = useState<string>("");
   const [about, setAbout] = useState(false);
+  const [demo] = useState(isDemo);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,7 +54,8 @@ export default function App() {
   if (indexError) return <main className="p-6 text-muted-foreground">Could not load the stories.</main>;
   if (!index) return <main className="p-6 text-muted-foreground">Loading…</main>;
   return (
-    <Tabs.Root value={active} onValueChange={setActive} className="flex h-full flex-col">
+    <Tabs.Root value={active} onValueChange={setActive} className="flex h-full flex-col"
+      style={demo ? { zoom: DEMO_ZOOM } : undefined}>
       <header className="flex flex-wrap items-center gap-x-8 gap-y-2 border-b border-border px-4 py-3 md:px-8">
         <p className="flex flex-wrap items-baseline gap-x-3">
           <span className="text-[16px] font-semibold">Chesterton</span>
@@ -66,7 +77,7 @@ export default function App() {
       {index.stories.map((s) => (
         // Radix puts the panel itself in the tab order; ours always has focusable content.
         <Tabs.Content key={s.id} value={s.id} tabIndex={-1} className="min-h-0 flex-1 overflow-auto">
-          {active === s.id && <Story key={s.id} id={s.id} />}
+          {active === s.id && <Story key={s.id} id={s.id} demo={demo} />}
         </Tabs.Content>
       ))}
       <AboutDialog open={about} onClose={() => setAbout(false)} />
@@ -74,7 +85,7 @@ export default function App() {
   );
 }
 
-function Story({ id }: { id: string }) {
+function Story({ id, demo }: { id: string; demo: boolean }) {
   const [data, setData] = useState<{ bundle: Bundle; lines: DiffLine[] } | null>(null);
   const [error, setError] = useState(false);
   useEffect(() => {
@@ -95,10 +106,10 @@ function Story({ id }: { id: string }) {
   }, [id]);
   if (error) return <p className="p-6 text-muted-foreground">Could not load this story.</p>;
   if (!data) return <p className="p-6 text-muted-foreground">Loading story…</p>;
-  return <StoryView bundle={data.bundle} lines={data.lines} />;
+  return <StoryView bundle={data.bundle} lines={data.lines} demo={demo} />;
 }
 
-function StoryView({ bundle, lines }: { bundle: Bundle; lines: DiffLine[] }) {
+function StoryView({ bundle, lines, demo }: { bundle: Bundle; lines: DiffLine[]; demo: boolean }) {
   const total = bundle.timeline.total_s;
   const clock = useReplay(total);
   const state = useMemo(() => stateAt(bundle, clock.t), [bundle, clock.t]);
@@ -108,6 +119,9 @@ function StoryView({ bundle, lines }: { bundle: Bundle; lines: DiffLine[] }) {
   const [highlight, setHighlight] = useState<Verdict | null>(null);
   // The answer comes first; the replay of how it was found opens on request.
   const [traceOpen, setTraceOpen] = useState(false);
+  // Demo mode holds the review back until "Run Chesterton review" is clicked.
+  const [revealed, setRevealed] = useState(!demo);
+  const reveal = useCallback(() => setRevealed(true), []);
   const selected = order.find((m) => m.id === selectedId) ?? null;
   const toggleTrace = () => {
     if (traceOpen) clock.pause();
@@ -184,11 +198,12 @@ function StoryView({ bundle, lines }: { bundle: Bundle; lines: DiffLine[] }) {
   const s = summarise(bundle);
   return (
     <div className="flex flex-col">
-      <AnswerCard bundle={bundle} reduced={clock.reduced} />
-      <section aria-labelledby="how-found" className="flex flex-col">
+      <AnswerCard bundle={bundle} reduced={clock.reduced}
+        pending={revealed ? undefined : <DemoRun bundle={bundle} reduced={clock.reduced} onDone={reveal} />} />
+      {revealed && <section aria-labelledby="how-found" className="flex flex-col">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-border px-4 py-3 md:px-8">
           <h2 id="how-found" className="text-[16px] font-semibold">
-            <button type="button" aria-expanded={traceOpen} aria-controls="trace" onClick={toggleTrace}
+            <button type="button" data-demo="trace" aria-expanded={traceOpen} aria-controls="trace" onClick={toggleTrace}
               className="inline-flex cursor-pointer items-center gap-1.5 rounded-md py-1 hover:text-muted-foreground">
               {traceOpen ? <ChevronDown size={18} aria-hidden="true" /> : <ChevronRight size={18} aria-hidden="true" />}
               How Chesterton found this
@@ -221,7 +236,7 @@ function StoryView({ bundle, lines }: { bundle: Bundle; lines: DiffLine[] }) {
             </div>
           </div>
         )}
-      </section>
+      </section>}
     </div>
   );
 }

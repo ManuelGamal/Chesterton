@@ -14,7 +14,7 @@ export function CodeDiff({ rows, reduced, label, missed = false }: { rows: DiffR
       {rows.map((r, i) => {
         const flagged = missed && r.kind === "add";
         const line = (
-          <div data-kind={r.kind} className="flex whitespace-pre pr-3"
+          <div data-kind={r.kind} data-demo={flagged ? "missed-line" : undefined} className="flex whitespace-pre pr-3"
             style={{ background: flagged ? "var(--diff-missed)" : BACKGROUND[r.kind] }}>
             <span className="w-14 shrink-0 select-none pr-2 text-right text-muted-foreground tabular">{r.n}</span>
             <span aria-hidden="true" className="w-5 shrink-0 select-none text-muted-foreground">{SIGN[r.kind]}</span>

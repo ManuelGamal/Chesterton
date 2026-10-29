@@ -52,7 +52,7 @@ export function AskWhy({ storyId, finding }: { storyId: string; finding: Finding
       .join(" · ");
   return (
     <div className="mt-3">
-      <button type="button" onClick={ask} disabled={state.kind === "waiting"}
+      <button type="button" data-demo="ask-why" onClick={ask} disabled={state.kind === "waiting"}
         className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-1.5 text-[14px] font-medium hover:bg-muted disabled:opacity-50">
         <MessageCircleQuestionMark size={16} aria-hidden="true" /> Ask Nemotron why (live)
       </button>
