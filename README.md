@@ -58,7 +58,7 @@ A replay of three recorded runs, plus one live call.
 
 - **Sandboxes:** Nebius Token Factory Sandboxes (`https://api.tokenfactory.nebius.com/sandboxes/`). One seed checkpoint per pull request, forked once per mutant, 24 at a time.
 - **Models** on Token Factory (`https://api.tokenfactory.nebius.com/v1/`): `nvidia/Nemotron-3_5-Lightning` proposes mutants, `nvidia/nemotron-3-super-120b-a12b` triages survivors, and `nvidia/Nemotron-3-Ultra-550b-a55b` writes the regression test. The model ids are defined in `src/chesterton/llm/client.py`.
-- **The demo's live call:** `api/why.py` makes a real Nemotron Super call through `chesterton.demo.why.answer`. It is capped at 60 an hour and fails closed.
+- **The demo's live call:** `api/why.py` makes a real Nemotron Super call through `chesterton.demo.why.answer`. It is capped at 60 an hour and 100 a day, and fails closed.
 - **Deploy:** Vercel environment variables:
   - `NEBIUS_API_KEY` (server-side only);
   - `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`, or the Upstash Vercel integration's `KV_REST_API_URL` / `KV_REST_API_TOKEN`;

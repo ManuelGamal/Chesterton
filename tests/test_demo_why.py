@@ -6,7 +6,7 @@ import json
 import httpx
 import openai
 
-from chesterton.demo.why import HOURLY_CAP, UpstashCounter, answer
+from chesterton.demo.why import DAILY_CAP, HOURLY_CAP, UpstashCounter, answer
 from chesterton.llm.client import REASONING_MODEL
 
 from conftest import ScriptedClient, finding_reply
@@ -41,7 +41,7 @@ class Counter:
 async def ask(tmp_path, payload, client=None, counter=None):
     return await answer(payload, stories_dir=stories(tmp_path),
                         client=client or ScriptedClient(finding_reply()),
-                        counter=counter or Counter(1))
+                        counter=counter or Counter((1, 1)))
 
 
 async def test_a_known_finding_is_triaged_live_with_the_reasoning_model(tmp_path):
@@ -67,7 +67,7 @@ async def test_extra_fields_never_reach_the_model(tmp_path):
 
 
 async def test_unknown_story_or_finding_is_rejected_and_costs_nothing(tmp_path):
-    client, counter = ScriptedClient(finding_reply()), Counter(1)
+    client, counter = ScriptedClient(finding_reply()), Counter((1, 1))
 
     for payload in ({"story": "../etc", "finding": "h0"}, {"story": "hero", "finding": "zz"}, None, {}):
         result = await ask(tmp_path, payload, client=client, counter=counter)
@@ -77,7 +77,7 @@ async def test_unknown_story_or_finding_is_rejected_and_costs_nothing(tmp_path):
 
 
 async def test_a_trailing_newline_on_an_id_is_rejected_like_any_other_bad_id(tmp_path):
-    client, counter = ScriptedClient(finding_reply()), Counter(1)
+    client, counter = ScriptedClient(finding_reply()), Counter((1, 1))
 
     result = await ask(tmp_path, {"story": "hero\n", "finding": "h0"}, client=client, counter=counter)
 
@@ -105,10 +105,21 @@ async def test_over_the_cap_no_model_call_is_made(tmp_path):
     client = ScriptedClient(finding_reply())
 
     result = await ask(tmp_path, {"story": "hero", "finding": "h0"}, client=client,
-                       counter=Counter(HOURLY_CAP + 1))
+                       counter=Counter((HOURLY_CAP + 1, 1)))
 
     assert result.status == 429 and result.body["error"] == "capped"
     assert result.body["recorded"]["label"] == "untested_invariant"
+    assert client.calls == []
+
+
+async def test_over_the_daily_cap_no_model_call_is_made(tmp_path):
+    client = ScriptedClient(finding_reply())
+
+    result = await ask(tmp_path, {"story": "hero", "finding": "h0"}, client=client,
+                       counter=Counter((1, DAILY_CAP + 1)))
+
+    assert result.status == 429 and result.body["error"] == "capped"
+    assert "a day" in result.body["message"]
     assert client.calls == []
 
 
@@ -143,7 +154,7 @@ async def test_a_slow_model_times_out_honestly(tmp_path, monkeypatch):
 
 
 async def test_a_missing_or_corrupt_story_file_is_a_clean_error_and_costs_nothing(tmp_path):
-    client, counter = ScriptedClient(finding_reply()), Counter(1)
+    client, counter = ScriptedClient(finding_reply()), Counter((1, 1))
 
     # (a) index lists "hero" but hero.json is missing
     (tmp_path / "index.json").write_text(json.dumps({"stories": [{"id": "hero", "tab": "x"}]}),
@@ -157,7 +168,7 @@ async def test_a_missing_or_corrupt_story_file_is_a_clean_error_and_costs_nothin
     assert client.calls == []
 
     # (b) corrupt index.json (not valid JSON)
-    client, counter = ScriptedClient(finding_reply()), Counter(1)
+    client, counter = ScriptedClient(finding_reply()), Counter((1, 1))
     (tmp_path / "index.json").write_text("not json", encoding="utf-8")
     result = await answer({"story": "hero", "finding": "h0"}, stories_dir=tmp_path,
                           client=client, counter=counter)
@@ -186,9 +197,9 @@ def test_the_upstash_env_names_are_accepted(monkeypatch):
     monkeypatch.setenv("UPSTASH_REDIS_REST_TOKEN", "tok")
 
     counter = UpstashCounter.from_env(client=_mock_client(
-        lambda r: httpx.Response(200, json=[{"result": 3}, {"result": 1}])))
+        lambda r: httpx.Response(200, json=[{"result": 3}, {"result": 1}, {"result": 5}, {"result": 1}])))
 
-    assert counter.hit() == 3
+    assert counter.hit() == (3, 5)
 
 
 def test_the_vercel_kv_env_names_are_accepted_as_a_fallback(monkeypatch):
@@ -197,9 +208,9 @@ def test_the_vercel_kv_env_names_are_accepted_as_a_fallback(monkeypatch):
     monkeypatch.setenv("KV_REST_API_TOKEN", "tok")
 
     counter = UpstashCounter.from_env(client=_mock_client(
-        lambda r: httpx.Response(200, json=[{"result": 3}, {"result": 1}])))
+        lambda r: httpx.Response(200, json=[{"result": 3}, {"result": 1}, {"result": 5}, {"result": 1}])))
 
-    assert counter.hit() == 3
+    assert counter.hit() == (3, 5)
 
 
 def test_missing_env_leaves_the_counter_unavailable_and_names_the_gap_on_stderr(monkeypatch, capsys):
@@ -219,16 +230,18 @@ def test_a_successful_transaction_increments_and_sets_a_conditional_ttl():
         seen["auth"] = request.headers["authorization"]
         seen["url"] = str(request.url)
         seen["body"] = json.loads(request.content)
-        return httpx.Response(200, json=[{"result": 7}, {"result": 1}])
+        return httpx.Response(200, json=[{"result": 7}, {"result": 1}, {"result": 42}, {"result": 1}])
 
     counter = UpstashCounter("https://x.upstash.io", "tok", client=_mock_client(handler))
 
-    assert counter.hit() == 7
+    assert counter.hit() == (7, 42)
     assert seen["auth"] == "Bearer tok"
     assert seen["url"] == "https://x.upstash.io/multi-exec"
-    incr, expire = seen["body"]
+    incr, expire, day_incr, day_expire = seen["body"]
     assert incr[0] == "INCR" and incr[1].startswith("why:")
     assert expire == ["EXPIRE", incr[1], "3600", "NX"]
+    assert day_incr[0] == "INCR" and day_incr[1].startswith("why:d:")
+    assert day_expire == ["EXPIRE", day_incr[1], "86400", "NX"]
 
 
 def test_a_500_from_upstash_fails_closed():
@@ -240,7 +253,7 @@ def test_a_500_from_upstash_fails_closed():
 
 def test_an_error_entry_in_the_transaction_fails_closed():
     def handler(request):
-        return httpx.Response(200, json=[{"error": "WRONGTYPE"}, {"result": 1}])
+        return httpx.Response(200, json=[{"result": 1}, {"result": 1}, {"error": "WRONGTYPE"}, {"result": 1}])
 
     counter = UpstashCounter("https://x.upstash.io", "tok", client=_mock_client(handler))
 

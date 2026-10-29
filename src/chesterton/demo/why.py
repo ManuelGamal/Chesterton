@@ -25,6 +25,9 @@ from chesterton.triage.classify import classify_survivor
 from chesterton.triage.evidence import Evidence
 
 HOURLY_CAP = 60
+# Keeps the worst case (the button pressed all day, every day) inside the credit
+# left for judging: about $0.90 a day at Nemotron Super's price.
+DAILY_CAP = 100
 MODEL_TIMEOUT_S = 50.0
 UPSTASH_TIMEOUT_S = 5.0
 _ID = re.compile(r"[a-z0-9-]{1,40}")
@@ -80,13 +83,17 @@ async def answer(payload, *, stories_dir: Path, client, counter) -> WhyResult:
     bundle, item = found
     recorded = {"label": item["label"], "category": item["category"], "explanation": item["explanation"]}
 
-    count = counter.hit()
-    if count is None:
+    counts = counter.hit()
+    if counts is None:
         return _error(503, "rate_limit_unavailable",
                       "the live-call counter is unreachable, so no call was made", recorded)
-    if count > HOURLY_CAP:
+    hour, day = counts
+    if hour > HOURLY_CAP:
         return _error(429, "capped",
                       f"live calls are capped at {HOURLY_CAP} an hour to keep this demo free", recorded)
+    if day > DAILY_CAP:
+        return _error(429, "capped",
+                      f"live calls are capped at {DAILY_CAP} a day to keep this demo free", recorded)
 
     started = time.perf_counter()
     try:
@@ -104,7 +111,7 @@ async def answer(payload, *, stories_dir: Path, client, counter) -> WhyResult:
 
 
 class UpstashCounter:
-    """Hourly INCR over Upstash's REST pipeline; None on any failure, so callers fail closed."""
+    """Hourly and daily INCRs in one Upstash REST transaction; None on any failure, so callers fail closed."""
 
     def __init__(self, url: str | None, token: str | None, *, client: httpx.Client | None = None):
         self._url = url.rstrip("/") if url else url
@@ -124,16 +131,19 @@ class UpstashCounter:
             print(f"UpstashCounter unavailable: missing {', '.join(missing)}", file=sys.stderr)
         return cls(url, token, client=client)
 
-    def hit(self) -> int | None:
+    def hit(self) -> tuple[int, int] | None:
+        """This call's number within the current hour and the current day (UTC)."""
         if not self._url or not self._token:
             return None
-        key = f"why:{int(time.time() // 3600)}"
+        now = time.time()
+        hour, day = f"why:{int(now // 3600)}", f"why:d:{int(now // 86400)}"
         client = self._client or httpx.Client()
         try:
             response = client.post(
                 f"{self._url}/multi-exec",
                 headers={"Authorization": f"Bearer {self._token}"},
-                json=[["INCR", key], ["EXPIRE", key, "3600", "NX"]],
+                json=[["INCR", hour], ["EXPIRE", hour, "3600", "NX"],
+                      ["INCR", day], ["EXPIRE", day, "86400", "NX"]],
                 timeout=UPSTASH_TIMEOUT_S,
             )
         except httpx.HTTPError:
@@ -147,14 +157,11 @@ class UpstashCounter:
             results = response.json()
         except ValueError:
             return None
-        if not isinstance(results, list) or not results:
+        if not isinstance(results, list) or len(results) != 4:
             return None
-        incr = results[0]
-        if not isinstance(incr, dict) or "error" in incr:
-            return None
-        if any(isinstance(r, dict) and "error" in r for r in results):
+        if any(not isinstance(r, dict) or "error" in r for r in results):
             return None
         try:
-            return int(incr["result"])
+            return int(results[0]["result"]), int(results[2]["result"])
         except (KeyError, TypeError, ValueError):
             return None
